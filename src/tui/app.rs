@@ -136,13 +136,44 @@ impl App {
     }
 }
 
-/// Adjust a duration by one minute, never below one minute.
+/// Step a duration to the next/previous multiple of five minutes, never
+/// below one minute. Off-grid values snap to the grid rather than keeping
+/// their offset (1m -> 5m -> 10m, not 1m -> 6m -> 11m).
 fn bump_duration(d: Duration, dir: i64) -> Duration {
-    let minute = Duration::from_secs(60);
-    if dir > 0 {
-        d.saturating_add(minute)
+    const STEP: u64 = 5 * 60;
+    let secs = d.as_secs();
+    let snapped = if dir > 0 {
+        (secs / STEP + 1) * STEP
     } else {
-        d.saturating_sub(minute).max(minute)
+        secs.saturating_sub(1) / STEP * STEP
+    };
+    Duration::from_secs(snapped.max(60))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mins(m: u64) -> Duration {
+        Duration::from_secs(m * 60)
+    }
+
+    #[test]
+    fn steps_on_the_five_minute_grid() {
+        assert_eq!(bump_duration(mins(25), 1), mins(30));
+        assert_eq!(bump_duration(mins(25), -1), mins(20));
+    }
+
+    #[test]
+    fn snaps_back_to_grid_from_the_one_minute_floor() {
+        assert_eq!(bump_duration(mins(5), -1), mins(1));
+        assert_eq!(bump_duration(mins(1), 1), mins(5));
+    }
+
+    #[test]
+    fn off_grid_values_snap_instead_of_keeping_offset() {
+        assert_eq!(bump_duration(mins(7), 1), mins(10));
+        assert_eq!(bump_duration(mins(7), -1), mins(5));
     }
 }
 
