@@ -1,0 +1,32 @@
+[package]
+name = "focus-fox"
+version = "0.1.0"
+edition = "2024"
+description = "Terminal-based pomodoro timer"
+license = "MIT"
+default-run = "focus-fox"
+
+[[bin]]
+name = "focus-fox"
+path = "src/main.rs"
+
+[[bin]]
+name = "fox"
+path = "src/main.rs"
+
+[dependencies]
+# TUI (re-exports crossterm, so no separate pin needed)
+ratatui = "0.30"
+
+# CLI
+clap = { version = "4.6", features = ["derive"] }
+
+# Configuration
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+directories = "6"
+humantime = "2"
+humantime-serde = "1"
+
+# Error handling
+anyhow = "1"
