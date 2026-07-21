@@ -4,17 +4,19 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Gauge, Paragraph};
 
-use super::app::App;
-use crate::timer::Phase;
+use super::app::{App, MENU_ITEMS, Screen};
+use crate::timer::{Phase, Timer};
+
+const FOX: Color = Color::LightYellow;
 
 pub fn render(frame: &mut Frame, app: &App) {
-    let timer = &app.timer;
-    let accent = match timer.phase {
-        Phase::Work => Color::LightRed,
-        Phase::ShortBreak => Color::LightGreen,
-        Phase::LongBreak => Color::LightBlue,
-    };
+    match &app.screen {
+        Screen::Menu { selected } => render_menu(frame, app, *selected),
+        Screen::Timer(timer) => render_timer(frame, timer),
+    }
+}
 
+fn frame_block(frame: &mut Frame, accent: Color) -> Rect {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(accent))
@@ -22,6 +24,80 @@ pub fn render(frame: &mut Frame, app: &App) {
         .title_alignment(Alignment::Center);
     let inner = block.inner(frame.area());
     frame.render_widget(block, frame.area());
+    inner
+}
+
+// --- Menu screen ---
+
+fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
+    let inner = frame_block(frame, FOX);
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Fill(1),
+            Constraint::Length(MENU_ITEMS.len() as u16 + 2), // items + start row
+            Constraint::Fill(1),
+            Constraint::Length(1), // status
+            Constraint::Length(1), // key help
+        ])
+        .split(inner);
+
+    let c = &app.config;
+    let values = [
+        humantime::format_duration(c.work).to_string(),
+        humantime::format_duration(c.short_break).to_string(),
+        humantime::format_duration(c.long_break).to_string(),
+        c.sessions_before_long_break.to_string(),
+        if c.notify { "on" } else { "off" }.to_string(),
+    ];
+
+    let mut lines: Vec<Line> = MENU_ITEMS
+        .iter()
+        .zip(values)
+        .enumerate()
+        .map(|(i, (label, value))| {
+            let marker = if i == selected { "▸ " } else { "  " };
+            let style = if i == selected {
+                Style::default().fg(FOX).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            Line::styled(format!("{marker}{label:<15} ◂ {value:>7} ▸"), style)
+        })
+        .collect();
+    lines.push(Line::raw(""));
+    lines.push(Line::styled(
+        "press enter to start",
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    frame.render_widget(
+        Paragraph::new(lines).alignment(Alignment::Center),
+        rows[1],
+    );
+
+    if let Some(status) = &app.status {
+        frame.render_widget(
+            Paragraph::new(status.as_str())
+                .style(Style::default().fg(Color::Yellow))
+                .alignment(Alignment::Center),
+            rows[3],
+        );
+    }
+
+    render_help(frame, rows[4], "↑↓ select · ←→ adjust · enter start · w save · q quit");
+}
+
+// --- Timer screen ---
+
+fn render_timer(frame: &mut Frame, timer: &Timer) {
+    let accent = match timer.phase {
+        Phase::Work => Color::LightRed,
+        Phase::ShortBreak => Color::LightGreen,
+        Phase::LongBreak => Color::LightBlue,
+    };
+    let inner = frame_block(frame, accent);
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -37,14 +113,17 @@ pub fn render(frame: &mut Frame, app: &App) {
         ])
         .split(inner);
 
-    render_phase_line(frame, rows[1], app, accent);
-    render_clock(frame, rows[3], app, accent);
-    render_gauge(frame, centered(rows[5], 60), app, accent);
-    render_help(frame, rows[7]);
+    render_phase_line(frame, rows[1], timer, accent);
+    render_clock(frame, rows[3], timer, accent);
+    render_gauge(frame, centered(rows[5], 60), timer, accent);
+    render_help(
+        frame,
+        rows[7],
+        "space pause · s skip · r reset · m menu · q quit",
+    );
 }
 
-fn render_phase_line(frame: &mut Frame, area: Rect, app: &App, accent: Color) {
-    let timer = &app.timer;
+fn render_phase_line(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
     let (done, total) = timer.cycle_position();
     let dots: String = (0..total)
         .map(|i| if i < done { '●' } else { '○' })
@@ -70,11 +149,11 @@ fn render_phase_line(frame: &mut Frame, area: Rect, app: &App, accent: Color) {
     );
 }
 
-fn render_clock(frame: &mut Frame, area: Rect, app: &App, accent: Color) {
-    let secs = app.timer.remaining.as_secs();
+fn render_clock(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
+    let secs = timer.remaining.as_secs();
     let text = format!("{:02}:{:02}", secs / 60, secs % 60);
     let lines = big_text(&text);
-    let style = if app.timer.paused {
+    let style = if timer.paused {
         Style::default().fg(Color::DarkGray)
     } else {
         Style::default().fg(accent).add_modifier(Modifier::BOLD)
@@ -85,17 +164,17 @@ fn render_clock(frame: &mut Frame, area: Rect, app: &App, accent: Color) {
     frame.render_widget(paragraph, area);
 }
 
-fn render_gauge(frame: &mut Frame, area: Rect, app: &App, accent: Color) {
+fn render_gauge(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
     let gauge = Gauge::default()
         .gauge_style(Style::default().fg(accent))
-        .ratio(app.timer.progress().clamp(0.0, 1.0))
+        .ratio(timer.progress().clamp(0.0, 1.0))
         .label("");
     frame.render_widget(gauge, area);
 }
 
-fn render_help(frame: &mut Frame, area: Rect) {
+fn render_help(frame: &mut Frame, area: Rect, text: &str) {
     frame.render_widget(
-        Paragraph::new("space pause · s skip · r reset · q quit")
+        Paragraph::new(text)
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center),
         area,

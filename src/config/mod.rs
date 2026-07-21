@@ -59,6 +59,19 @@ impl Config {
         toml::from_str(&contents).with_context(|| format!("parsing config at {}", path.display()))
     }
 
+    /// Write the current config to the XDG config file, creating it if needed.
+    pub fn save(&self) -> Result<PathBuf> {
+        let path = Self::config_path().context("could not determine config directory")?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
+        let contents = toml::to_string_pretty(self).context("serializing config")?;
+        std::fs::write(&path, contents)
+            .with_context(|| format!("writing config to {}", path.display()))?;
+        Ok(path)
+    }
+
     /// CLI arguments override config file values.
     pub fn merge_args(mut self, args: &Args) -> Self {
         if let Some(work) = args.work {

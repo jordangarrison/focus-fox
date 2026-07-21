@@ -15,13 +15,29 @@ fox --no-notify                 # skip desktop notifications
 
 The binary is installed as both `fox` and `focus-fox` — same program.
 
+Launch opens a configuration menu; tweak values there (or skip straight
+past it with Enter) and start the timer.
+
 ### Keys
+
+Menu (launch screen):
+
+| Key           | Action                        |
+|---------------|-------------------------------|
+| `↑`/`↓`, `k`/`j` | select setting             |
+| `←`/`→`, `h`/`l` | adjust value               |
+| `Enter`       | start the timer               |
+| `w`           | save settings to config file  |
+| `q`/`Esc`     | quit                          |
+
+Timer:
 
 | Key         | Action              |
 |-------------|---------------------|
 | `space`/`p` | pause / resume      |
 | `s`         | skip to next phase  |
 | `r`         | restart this phase  |
+| `m`         | back to the menu    |
 | `q`/`Esc`   | quit                |
 
 ## Configuration
