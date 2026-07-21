@@ -86,7 +86,7 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
         );
     }
 
-    render_help(frame, rows[4], "↑↓ select · ←→ adjust · enter start · w save · q quit");
+    render_help(frame, rows[4], "↑↓ select · ←→ adjust · enter start · q quit");
 }
 
 // --- Timer screen ---

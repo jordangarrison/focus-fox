@@ -32,7 +32,8 @@ module layout as sweet-nothings.
   tested here.
 - **`src/tui/`** - Terminal UI with two screens (`Screen` enum in `app.rs`):
   a configuration menu shown at launch (arrow keys adjust settings, Enter
-  starts, `w` persists to the config file) and the timer screen. `app.rs`
+  starts; every adjustment auto-saves to the config file so settings
+  persist between runs) and the timer screen. `app.rs`
   owns the event loop (100ms tick, keyboard handling), `ui.rs` renders the
   menu and the big block-digit clock, progress gauge, and session dots.
 - **`src/notify/`** - Best-effort desktop notifications by shelling out to

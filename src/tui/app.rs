@@ -92,7 +92,6 @@ impl App {
                     KeyCode::Enter => {
                         self.screen = Screen::Timer(Timer::new(self.config.clone()));
                     }
-                    KeyCode::Char('w') => self.save_config(),
                     _ => {}
                 }
             }
@@ -126,13 +125,10 @@ impl App {
             4 => c.notify = !c.notify,
             _ => {}
         }
-    }
-
-    fn save_config(&mut self) {
-        self.status = Some(match self.config.save() {
-            Ok(path) => format!("saved to {}", path.display()),
-            Err(err) => format!("save failed: {err}"),
-        });
+        // Menu settings persist between app starts; only surface failures.
+        if let Err(err) = self.config.save() {
+            self.status = Some(format!("save failed: {err}"));
+        }
     }
 }
 

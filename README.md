@@ -27,8 +27,9 @@ Menu (launch screen):
 | `↑`/`↓`, `k`/`j` | select setting             |
 | `←`/`→`, `h`/`l` | adjust value               |
 | `Enter`       | start the timer               |
-| `w`           | save settings to config file  |
 | `q`/`Esc`     | quit                          |
+
+Menu changes are saved automatically and persist between app starts.
 
 Timer:
 
@@ -42,7 +43,8 @@ Timer:
 
 ## Configuration
 
-Optional config at `~/.config/focus-fox/config.toml` (CLI flags override):
+Settings live at `~/.config/focus-fox/config.toml`, written automatically
+whenever you adjust them in the menu (CLI flags override at launch):
 
 ```toml
 work = "25m"
