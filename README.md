@@ -6,7 +6,7 @@ in the middle, and desktop notifications when phases change.
 
 ## Demo
 
-https://github.com/user-attachments/assets/905a46e3-9c9e-4299-91f6-35ed7144b4fd
+https://github.com/user-attachments/assets/59594780-4102-4dbb-92e4-9838c95530f9
 
 ## Screenshots
 
