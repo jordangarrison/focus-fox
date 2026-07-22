@@ -18,6 +18,24 @@ https://github.com/user-attachments/assets/59594780-4102-4dbb-92e4-9838c95530f9
 |------------------|-------|
 | ![Alert screen between phases](assets/screenshot-transition.png) | ![Break timer](assets/screenshot-break.png) |
 
+## Install
+
+Grab a package from the [latest release](https://github.com/jordangarrison/focus-fox/releases/latest):
+
+| Platform | Asset |
+|----------|-------|
+| Debian / Ubuntu | `focus-fox_*.deb` — `sudo dpkg -i focus-fox_*.deb` |
+| Fedora / RHEL | `focus-fox-*.rpm` — `sudo rpm -i focus-fox-*.rpm` |
+| Arch | `focus-fox-*.pkg.tar.zst` — `sudo pacman -U focus-fox-*.pkg.tar.zst` |
+| Any Linux (static) | `focus-fox-*-linux.tar.gz` — untar and drop `fox` on your `PATH` |
+| macOS (Apple Silicon) | `focus-fox-*-aarch64-darwin.tar.gz` — untar and drop `fox` on your `PATH` |
+| Nix | `nix profile install github:jordangarrison/focus-fox` |
+
+Windows: use WSL with any of the Linux options.
+
+Desktop notifications shell out to `notify-send` (Linux), so install
+`libnotify` if you want them; the timer works fine without it.
+
 ## Usage
 
 ```bash
@@ -76,3 +94,18 @@ cargo run
 cargo test
 nix build       # release build with notify-send wrapped onto PATH
 ```
+
+### Release assets
+
+```bash
+nix build .#release   # all downloadable assets for this system in ./result
+nix build .#deb       # just the .deb (linux)
+nix build .#rpm       # just the .rpm (linux)
+nix build .#arch      # just the pacman package (linux)
+nix build .#tarball   # just the tar.gz
+```
+
+Pushing a `v*` tag runs the release workflow: every runner (Linux
+x86_64 + arm64, macOS Apple Silicon) runs `nix build .#release` and
+attaches the results to the GitHub release. No Intel mac build —
+nixpkgs 26.11 dropped the platform.
