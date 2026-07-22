@@ -33,9 +33,12 @@ module layout as sweet-nothings.
 - **`src/tui/`** - Terminal UI with two screens (`Screen` enum in `app.rs`):
   a configuration menu shown at launch (arrow keys adjust settings, Enter
   starts; every adjustment auto-saves to the config file so settings
-  persist between runs) and the timer screen. `app.rs`
-  owns the event loop (100ms tick, keyboard handling), `ui.rs` renders the
-  menu and the big block-digit clock, progress gauge, and session dots.
+  persist between runs) and the timer screen. When a phase ends naturally
+  (and the "Alert screen" setting is on), a full-screen alert freezes the
+  timer until Enter is pressed (`App.alert`); manual skips bypass it.
+  `app.rs` owns the event loop (100ms tick, keyboard handling), `ui.rs`
+  renders the menu, the alert banner, and the big block-digit clock,
+  progress gauge, and session dots.
 - **`src/notify/`** - Best-effort desktop notifications by shelling out to
   `notify-send`; failures never interrupt the timer.
 - **`src/config/`** - XDG config (`~/.config/focus-fox/config.toml`, TOML,

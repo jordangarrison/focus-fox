@@ -24,4 +24,8 @@ pub struct Args {
     /// Disable desktop notifications
     #[arg(long)]
     pub no_notify: bool,
+
+    /// Disable the full-screen alert between sessions
+    #[arg(long)]
+    pub no_alert: bool,
 }

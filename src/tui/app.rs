@@ -8,12 +8,13 @@ use crate::config::Config;
 use crate::notify;
 use crate::timer::{Phase, Timer};
 
-pub const MENU_ITEMS: [&str; 5] = [
+pub const MENU_ITEMS: [&str; 6] = [
     "Work",
     "Short break",
     "Long break",
     "Sessions",
     "Notifications",
+    "Alert screen",
 ];
 
 pub enum Screen {
@@ -25,6 +26,9 @@ pub struct App {
     pub config: Config,
     pub screen: Screen,
     pub status: Option<String>,
+    /// When set, the timer is frozen on a full-screen alert announcing this
+    /// upcoming phase until the user presses Enter.
+    pub alert: Option<Phase>,
     should_quit: bool,
 }
 
@@ -34,6 +38,7 @@ impl App {
             config,
             screen: Screen::Menu { selected: 0 },
             status: None,
+            alert: None,
             should_quit: false,
         }
     }
@@ -54,14 +59,25 @@ impl App {
             }
 
             let now = Instant::now();
-            if let Screen::Timer(timer) = &mut self.screen {
-                if let Some(phase) = timer.tick(now - last_tick) {
-                    announce(&self.config, phase);
-                }
-            }
+            self.advance_clock(now - last_tick);
             last_tick = now;
         }
         Ok(())
+    }
+
+    /// Tick the timer unless an alert is holding it between phases.
+    fn advance_clock(&mut self, delta: Duration) {
+        if self.alert.is_some() {
+            return;
+        }
+        if let Screen::Timer(timer) = &mut self.screen {
+            if let Some(phase) = timer.tick(delta) {
+                announce(&self.config, phase);
+                if self.config.alert_screen {
+                    self.alert = Some(phase);
+                }
+            }
+        }
     }
 
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
@@ -76,6 +92,22 @@ impl App {
                 return;
             }
             _ => {}
+        }
+        if self.alert.is_some() {
+            match code {
+                KeyCode::Enter => self.alert = None,
+                // Skip the phase the alert announced and start the one after
+                // it immediately — the keypress proves the user is present.
+                KeyCode::Char('s') => {
+                    self.alert = None;
+                    if let Screen::Timer(timer) = &mut self.screen {
+                        let phase = timer.skip();
+                        announce(&self.config, phase);
+                    }
+                }
+                _ => {}
+            }
+            return;
         }
         match &mut self.screen {
             Screen::Menu { selected } => {
@@ -123,6 +155,7 @@ impl App {
                     (c.sessions_before_long_break as i64 + dir).max(1) as u32;
             }
             4 => c.notify = !c.notify,
+            5 => c.alert_screen = !c.alert_screen,
             _ => {}
         }
         // Menu settings persist between app starts; only surface failures.
@@ -170,6 +203,77 @@ mod tests {
     fn off_grid_values_snap_instead_of_keeping_offset() {
         assert_eq!(bump_duration(mins(7), 1), mins(10));
         assert_eq!(bump_duration(mins(7), -1), mins(5));
+    }
+
+    fn app_on_timer(alert_screen: bool) -> App {
+        let config = Config {
+            work: Duration::from_secs(10),
+            short_break: Duration::from_secs(2),
+            long_break: Duration::from_secs(5),
+            sessions_before_long_break: 4,
+            notify: false,
+            alert_screen,
+        };
+        let mut app = App::new(config.clone());
+        app.screen = Screen::Timer(Timer::new(config));
+        app
+    }
+
+    fn remaining(app: &App) -> Duration {
+        match &app.screen {
+            Screen::Timer(timer) => timer.remaining,
+            Screen::Menu { .. } => panic!("expected timer screen"),
+        }
+    }
+
+    #[test]
+    fn alert_freezes_timer_until_enter() {
+        let mut app = app_on_timer(true);
+        app.advance_clock(Duration::from_secs(10)); // work ends -> short break
+        assert_eq!(app.alert, Some(Phase::ShortBreak));
+
+        // Clock is held: the break hasn't started counting down.
+        app.advance_clock(Duration::from_secs(60));
+        assert_eq!(remaining(&app), Duration::from_secs(2));
+
+        // Unbound keys don't dismiss it; Enter does.
+        app.handle_key(KeyCode::Char('x'), KeyModifiers::NONE);
+        assert_eq!(app.alert, Some(Phase::ShortBreak));
+        app.handle_key(KeyCode::Enter, KeyModifiers::NONE);
+        assert_eq!(app.alert, None);
+
+        app.advance_clock(Duration::from_secs(1));
+        assert_eq!(remaining(&app), Duration::from_secs(1));
+    }
+
+    #[test]
+    fn skip_from_alert_jumps_past_the_announced_phase() {
+        let mut app = app_on_timer(true);
+        app.advance_clock(Duration::from_secs(10)); // work ends -> break alert
+        assert_eq!(app.alert, Some(Phase::ShortBreak));
+
+        // Skip the break entirely: straight into work, running, no new alert.
+        app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
+        assert_eq!(app.alert, None);
+        assert_eq!(remaining(&app), Duration::from_secs(10));
+        app.advance_clock(Duration::from_secs(1));
+        assert_eq!(remaining(&app), Duration::from_secs(9));
+    }
+
+    #[test]
+    fn alert_disabled_rolls_straight_into_next_phase() {
+        let mut app = app_on_timer(false);
+        app.advance_clock(Duration::from_secs(10));
+        assert_eq!(app.alert, None);
+        app.advance_clock(Duration::from_secs(1));
+        assert_eq!(remaining(&app), Duration::from_secs(1));
+    }
+
+    #[test]
+    fn manual_skip_does_not_raise_alert() {
+        let mut app = app_on_timer(true);
+        app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
+        assert_eq!(app.alert, None);
     }
 }
 

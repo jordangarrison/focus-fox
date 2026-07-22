@@ -10,9 +10,10 @@ use crate::timer::{Phase, Timer};
 const FOX: Color = Color::LightYellow;
 
 pub fn render(frame: &mut Frame, app: &App) {
-    match &app.screen {
-        Screen::Menu { selected } => render_menu(frame, app, *selected),
-        Screen::Timer(timer) => render_timer(frame, timer),
+    match (&app.screen, app.alert) {
+        (Screen::Timer(timer), Some(phase)) => render_alert(frame, timer, phase),
+        (Screen::Timer(timer), None) => render_timer(frame, timer),
+        (Screen::Menu { selected }, _) => render_menu(frame, app, *selected),
     }
 }
 
@@ -50,6 +51,7 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
         humantime::format_duration(c.long_break).to_string(),
         c.sessions_before_long_break.to_string(),
         if c.notify { "on" } else { "off" }.to_string(),
+        if c.alert_screen { "on" } else { "off" }.to_string(),
     ];
 
     let mut lines: Vec<Line> = MENU_ITEMS
@@ -91,12 +93,16 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
 
 // --- Timer screen ---
 
-fn render_timer(frame: &mut Frame, timer: &Timer) {
-    let accent = match timer.phase {
+fn phase_color(phase: Phase) -> Color {
+    match phase {
         Phase::Work => Color::LightRed,
         Phase::ShortBreak => Color::LightGreen,
         Phase::LongBreak => Color::LightBlue,
-    };
+    }
+}
+
+fn render_timer(frame: &mut Frame, timer: &Timer) {
+    let accent = phase_color(timer.phase);
     let inner = frame_block(frame, accent);
 
     let rows = Layout::default()
@@ -121,6 +127,65 @@ fn render_timer(frame: &mut Frame, timer: &Timer) {
         rows[7],
         "space pause · s skip · r reset · m menu · q quit",
     );
+}
+
+// --- Alert screen ---
+
+/// Full-screen banner shown between phases; the timer is frozen behind it
+/// until the user presses Enter.
+fn render_alert(frame: &mut Frame, timer: &Timer, phase: Phase) {
+    let accent = phase_color(phase);
+    let inner = frame_block(frame, accent);
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Fill(1),
+            Constraint::Length(3), // banner
+            Constraint::Length(1),
+            Constraint::Length(1), // tagline
+            Constraint::Length(1), // upcoming phase length
+            Constraint::Fill(1),
+            Constraint::Length(1), // key help
+        ])
+        .split(inner);
+
+    let (title, tagline) = match phase {
+        Phase::Work => ("BACK TO WORK", "Break's over — time to focus."),
+        Phase::ShortBreak => ("BREAK TIME", "Stretch your legs for a bit."),
+        Phase::LongBreak => ("LONG BREAK", "You earned it. Step away."),
+    };
+
+    let banner = Paragraph::new(vec![
+        Line::raw(""),
+        Line::from(Span::styled(
+            format!("  🦊  {title}  🦊  "),
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::raw(""),
+    ])
+    .style(Style::default().fg(accent).add_modifier(Modifier::REVERSED))
+    .alignment(Alignment::Center);
+    frame.render_widget(banner, centered(rows[1], 40));
+
+    frame.render_widget(
+        Paragraph::new(tagline)
+            .style(Style::default().fg(accent))
+            .alignment(Alignment::Center),
+        rows[3],
+    );
+    frame.render_widget(
+        Paragraph::new(format!(
+            "{} · {}",
+            timer.phase.label(),
+            humantime::format_duration(timer.total)
+        ))
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Center),
+        rows[4],
+    );
+
+    render_help(frame, rows[6], "enter continue · s skip · q quit");
 }
 
 fn render_phase_line(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {

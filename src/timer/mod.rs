@@ -125,6 +125,7 @@ mod tests {
             long_break: Duration::from_secs(5),
             sessions_before_long_break: 2,
             notify: false,
+            alert_screen: false,
         }
     }
 

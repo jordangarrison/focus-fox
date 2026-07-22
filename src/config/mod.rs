@@ -26,6 +26,9 @@ pub struct Config {
 
     /// Send desktop notifications on phase changes
     pub notify: bool,
+
+    /// Hold on a full-screen alert at phase changes until Enter is pressed
+    pub alert_screen: bool,
 }
 
 impl Default for Config {
@@ -36,6 +39,7 @@ impl Default for Config {
             long_break: Duration::from_secs(15 * 60),
             sessions_before_long_break: 4,
             notify: true,
+            alert_screen: true,
         }
     }
 }
@@ -88,6 +92,9 @@ impl Config {
         }
         if args.no_notify {
             self.notify = false;
+        }
+        if args.no_alert {
+            self.alert_screen = false;
         }
         self
     }
