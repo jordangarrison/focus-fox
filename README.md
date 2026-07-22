@@ -105,7 +105,10 @@ nix build .#arch      # just the pacman package (linux)
 nix build .#tarball   # just the tar.gz
 ```
 
-Pushing a `v*` tag runs the release workflow: every runner (Linux
-x86_64 + arm64, macOS Apple Silicon) runs `nix build .#release` and
-attaches the results to the GitHub release. No Intel mac build —
-nixpkgs 26.11 dropped the platform.
+Releases are automated with release-please: `feat:`/`fix:` commits on
+`main` accumulate into a release PR, and merging it bumps the version,
+updates the changelog, tags, and creates the GitHub release. The release
+workflow then builds every asset with `nix build .#release` on Linux
+(x86_64 + arm64) and macOS (Apple Silicon) runners and attaches them.
+No Intel mac build — nixpkgs 26.11 dropped the platform. Pushing a `v*`
+tag by hand triggers the same asset build.

@@ -17,6 +17,9 @@ cargo run -- --no-notify
 # Nix
 nix develop     # dev shell (rust toolchain + libnotify)
 nix build       # package with notify-send wrapped onto PATH
+
+# Release assets (linux: also .#deb, .#rpm, .#arch, .#static, .#tarball)
+nix build .#release   # every downloadable asset for this system in ./result
 ```
 
 ## Architecture
@@ -44,6 +47,42 @@ module layout as sweet-nothings.
 - **`src/config/`** - XDG config (`~/.config/focus-fox/config.toml`, TOML,
   humantime durations). CLI args override file values via `merge_args`.
 - **`src/cli/`** - Clap argument parsing.
+
+## Releases
+
+Fully automated via release-please + nix. The flow:
+
+1. Land conventional commits on `main`. `feat:`/`fix:` accumulate into a
+   release-please PR (`chore(main): release ...`); use `ci:`/`chore:`/
+   `docs:` for changes that shouldn't trigger a release.
+2. Merging that PR bumps `Cargo.toml`/`Cargo.lock`, updates
+   `CHANGELOG.md`, tags `vX.Y.Z`, and creates the GitHub release
+   (`release-please.yml`, config in `release-please-config.json` +
+   `.release-please-manifest.json`).
+3. `release-please.yml` then dispatches `release.yml` onto the new tag —
+   required because tags created with `GITHUB_TOKEN` don't fire tag-push
+   workflows.
+4. `release.yml` runs `nix build .#release` on three runners
+   (`ubuntu-latest`, `ubuntu-24.04-arm`, `macos-14`) and uploads
+   everything with `gh release upload`.
+
+Notes:
+
+- All assets come from the flake — never add rustup/cargo steps to CI;
+  reproducibility from `flake.lock` is the point.
+- Linux assets are built from a static musl binary (`.#static`); the
+  deb/rpm/arch packages are generated from it with nfpm. macOS is a
+  plain tarball of the native aarch64-darwin build.
+- The flake reads `version` from `Cargo.toml`, so release-please bumps
+  flow through automatically. `.release-please-manifest.json` tracks the
+  released version; tags are plain `vX.Y.Z`
+  (`include-component-in-tag: false` — don't remove it, component tags
+  like `focus-fox-v0.1.0` break the `v*` trigger and tag history).
+- No x86_64-darwin / universal mac build: nixpkgs 26.11 dropped the
+  platform, and the flake enumerates supported systems explicitly
+  (don't switch back to `eachDefaultSystem`).
+- Manual escape hatch: pushing a `v*` tag by hand also triggers
+  `release.yml`, which creates the GitHub release if missing.
 
 ### Notes
 
