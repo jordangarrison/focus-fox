@@ -6,9 +6,7 @@ in the middle, and desktop notifications when phases change.
 
 ## Demo
 
-![Focus Fox demo (4x speed)](assets/focus-fox-demo.gif)
-
-*4x speed — [full demo video](assets/focus-fox-demo.mp4).*
+https://github.com/user-attachments/assets/905a46e3-9c9e-4299-91f6-35ed7144b4fd
 
 ## Screenshots
 
