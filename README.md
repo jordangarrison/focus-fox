@@ -10,6 +10,16 @@ in the middle, and desktop notifications when phases change.
 
 *4x speed — [full demo video](assets/focus-fox-demo.mp4).*
 
+## Screenshots
+
+| Menu | Focus session |
+|------|---------------|
+| ![Configuration menu](assets/screenshot-menu.png) | ![Focus timer with progress ring](assets/screenshot-focus.png) |
+
+| Phase transition | Break |
+|------------------|-------|
+| ![Alert screen between phases](assets/screenshot-transition.png) | ![Break timer](assets/screenshot-break.png) |
+
 ## Usage
 
 ```bash
