@@ -1,8 +1,10 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
+use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Gauge, Paragraph};
+use ratatui::widgets::canvas::{Canvas, Points};
+use ratatui::widgets::{Block, Borders, Paragraph};
 
 use super::app::{App, MENU_ITEMS, Screen};
 use crate::timer::{Phase, Timer};
@@ -30,19 +32,41 @@ fn frame_block(frame: &mut Frame, accent: Color) -> Rect {
 
 // --- Menu screen ---
 
+const FOX_ART: &str = "\
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⠙⠻⢶⣄⡀⠀⠀⠀⢀⣤⠶⠛⠛⡇⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢹⣇⠀⠀⣙⣿⣦⣤⣴⣿⣁⠀⠀⣸⠇⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⣡⣾⣿⣿⣿⣿⣿⣿⣿⣷⣌⠋⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣴⣿⣷⣄⡈⢻⣿⡟⢁⣠⣾⣿⣦⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢹⣿⣿⣿⣿⠘⣿⠃⣿⣿⣿⣿⡏⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠀⠈⠛⣰⠿⣆⠛⠁⠀⡀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⣿⣦⠀⠘⠛⠋⠀⣴⣿⠁⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣶⣾⣿⣿⣿⣿⡇⠀⠀⠀⢸⣿⣏⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⠿⠿⠀⠀⠀⠾⢿⣿⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⣠⣿⣿⣿⣿⣿⣿⡿⠟⠋⣁⣠⣤⣤⡶⠶⠶⣤⣄⠈⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⢰⣿⣿⣮⣉⣉⣉⣤⣴⣶⣿⣿⣋⡥⠄⠀⠀⠀⠀⠉⢻⣄⠀⠀⠀⠀⠀
+⠀⠀⠀⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣟⣋⣁⣤⣀⣀⣤⣤⣤⣤⣄⣿⡄⠀⠀⠀⠀
+⠀⠀⠀⠀⠙⠿⣿⣿⣿⣿⣿⣿⣿⡿⠿⠛⠋⠉⠁⠀⠀⠀⠀⠈⠛⠃⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠉⠉⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀";
+
 fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
     let inner = frame_block(frame, FOX);
 
+    let fox_height = FOX_ART.lines().count() as u16;
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Fill(1),
+            Constraint::Length(fox_height), // fox
+            Constraint::Length(1),
             Constraint::Length(MENU_ITEMS.len() as u16 + 2), // items + start row
             Constraint::Fill(1),
             Constraint::Length(1), // status
             Constraint::Length(1), // key help
         ])
         .split(inner);
+
+    render_fox(frame, rows[1]);
 
     let c = &app.config;
     let values = [
@@ -76,7 +100,7 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
 
     frame.render_widget(
         Paragraph::new(lines).alignment(Alignment::Center),
-        rows[1],
+        rows[3],
     );
 
     if let Some(status) = &app.status {
@@ -84,11 +108,21 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
             Paragraph::new(status.as_str())
                 .style(Style::default().fg(Color::Yellow))
                 .alignment(Alignment::Center),
-            rows[3],
+            rows[5],
         );
     }
 
-    render_help(frame, rows[4], "↑↓ select · ←→ adjust · enter start · q quit");
+    render_help(frame, rows[6], "↑↓ select · ←→ adjust · enter start · q quit");
+}
+
+/// Center the fox as a block: left-aligned inside a width-fitted rect, so
+/// the art's internal indentation survives (per-line centering would skew it).
+fn render_fox(frame: &mut Frame, area: Rect) {
+    let width = FOX_ART.lines().map(|l| l.chars().count()).max().unwrap_or(0) as u16;
+    frame.render_widget(
+        Paragraph::new(FOX_ART).style(Style::default().fg(FOX)),
+        centered(area, width),
+    );
 }
 
 // --- Timer screen ---
@@ -108,23 +142,22 @@ fn render_timer(frame: &mut Frame, timer: &Timer) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Fill(1),
+            Constraint::Length(1),
             Constraint::Length(1), // phase + session dots
             Constraint::Length(1),
             Constraint::Length(5), // big clock
             Constraint::Length(1),
-            Constraint::Length(1), // gauge
-            Constraint::Fill(1),
+            Constraint::Fill(1),   // progress pie takes the rest
             Constraint::Length(1), // key help
         ])
         .split(inner);
 
     render_phase_line(frame, rows[1], timer, accent);
     render_clock(frame, rows[3], timer, accent);
-    render_gauge(frame, centered(rows[5], 60), timer, accent);
+    render_pie(frame, rows[5], timer, accent);
     render_help(
         frame,
-        rows[7],
+        rows[6],
         "space pause · s skip · r reset · m menu · q quit",
     );
 }
@@ -229,12 +262,54 @@ fn render_clock(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
     frame.render_widget(paragraph, area);
 }
 
-fn render_gauge(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
-    let gauge = Gauge::default()
-        .gauge_style(Style::default().fg(accent))
-        .ratio(timer.progress().clamp(0.0, 1.0))
-        .label("");
-    frame.render_widget(gauge, area);
+/// Filled progress pie: the elapsed slice sweeps clockwise from 12 o'clock
+/// in the accent color, the rest stays dim. Each braille dot is painted
+/// exactly once, colored by its own angle — overlapping strokes would smear
+/// colors, since a terminal cell can only hold one. Everything works in dot
+/// units (2x4 braille dots per cell): dot pitch is square in a typical 1:2
+/// terminal cell, so the circle stays round at any size. The circle fills
+/// 80% of the limiting dimension.
+fn render_pie(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
+    use std::f64::consts::{FRAC_PI_2, TAU};
+
+    let progress = timer.progress().clamp(0.0, 1.0);
+
+    let (w, h) = (area.width as f64 * 2.0, area.height as f64 * 4.0);
+    let radius = 0.8 * w.min(h) / 2.0;
+    let mut elapsed = Vec::new();
+    let mut remaining = Vec::new();
+    for iy in 0..h as usize {
+        for ix in 0..w as usize {
+            let x = ix as f64 + 0.5 - w / 2.0;
+            let y = iy as f64 + 0.5 - h / 2.0;
+            if x * x + y * y > radius * radius {
+                continue;
+            }
+            let t = (FRAC_PI_2 - y.atan2(x)).rem_euclid(TAU) / TAU;
+            let dot = (ix as f64 + 0.5, iy as f64 + 0.5);
+            if t < progress {
+                elapsed.push(dot);
+            } else {
+                remaining.push(dot);
+            }
+        }
+    }
+
+    let canvas = Canvas::default()
+        .marker(Marker::Braille)
+        .x_bounds([0.0, w])
+        .y_bounds([0.0, h])
+        .paint(move |ctx| {
+            ctx.draw(&Points {
+                coords: &remaining,
+                color: Color::DarkGray,
+            });
+            ctx.draw(&Points {
+                coords: &elapsed,
+                color: accent,
+            });
+        });
+    frame.render_widget(canvas, area);
 }
 
 fn render_help(frame: &mut Frame, area: Rect, text: &str) {
