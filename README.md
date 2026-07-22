@@ -1,8 +1,14 @@
 # 🦊 Focus Fox
 
 A terminal-based pomodoro timer. Work sessions, short breaks, and a long
-break every few sessions — with a big clock, a progress bar, and desktop
-notifications when phases change.
+break every few sessions — with a big clock, a progress ring with a fox
+in the middle, and desktop notifications when phases change.
+
+## Demo
+
+![Focus Fox demo (4x speed)](assets/focus-fox-demo.gif)
+
+*4x speed — [full demo video](assets/focus-fox-demo.mp4).*
 
 ## Usage
 
