@@ -262,13 +262,14 @@ fn render_clock(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
     frame.render_widget(paragraph, area);
 }
 
-/// Filled progress pie: the elapsed slice sweeps clockwise from 12 o'clock
-/// in the accent color, the rest stays dim. Each braille dot is painted
-/// exactly once, colored by its own angle — overlapping strokes would smear
-/// colors, since a terminal cell can only hold one. Everything works in dot
-/// units (2x4 braille dots per cell): dot pitch is square in a typical 1:2
+/// Progress dial: the elapsed slice sweeps clockwise from 12 o'clock in the
+/// accent color, the rest stays dim. Each braille dot is painted exactly
+/// once, colored by its own angle — overlapping strokes would smear colors,
+/// since a terminal cell can only hold one. Everything works in dot units
+/// (2x4 braille dots per cell): dot pitch is square in a typical 1:2
 /// terminal cell, so the circle stays round at any size. The circle fills
-/// 80% of the limiting dimension.
+/// 80% of the limiting dimension; when it's big enough to hold the fox art
+/// it hollows into a ring with the fox denned inside.
 fn render_pie(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
     use std::f64::consts::{FRAC_PI_2, TAU};
 
@@ -276,14 +277,26 @@ fn render_pie(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
 
     let (w, h) = (area.width as f64 * 2.0, area.height as f64 * 4.0);
     let radius = 0.8 * w.min(h) / 2.0;
+    // Hollow out a den for the fox when a ring of decent thickness still
+    // fits around it; otherwise stay a filled pie.
+    let hole = {
+        let need = fox_reach() + 2.0;
+        (radius - need >= 6.0).then(|| need.max(0.6 * radius))
+    };
     let mut elapsed = Vec::new();
     let mut remaining = Vec::new();
     for iy in 0..h as usize {
         for ix in 0..w as usize {
             let x = ix as f64 + 0.5 - w / 2.0;
             let y = iy as f64 + 0.5 - h / 2.0;
-            if x * x + y * y > radius * radius {
+            let d2 = x * x + y * y;
+            if d2 > radius * radius {
                 continue;
+            }
+            if let Some(inner) = hole {
+                if d2 < inner * inner {
+                    continue;
+                }
             }
             let t = (FRAC_PI_2 - y.atan2(x)).rem_euclid(TAU) / TAU;
             let dot = (ix as f64 + 0.5, iy as f64 + 0.5);
@@ -310,6 +323,57 @@ fn render_pie(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
             });
         });
     frame.render_widget(canvas, area);
+
+    if hole.is_some() {
+        draw_fox_in_den(frame, area);
+    }
+}
+
+fn inked(line: &str) -> impl Iterator<Item = (usize, char)> + '_ {
+    line.chars().enumerate().filter(|(_, ch)| *ch != '\u{2800}')
+}
+
+/// Distance in braille dots from the fox art's center to the farthest
+/// corner of any inked cell — the smallest circle the fox fits inside.
+fn fox_reach() -> f64 {
+    let lines: Vec<&str> = FOX_ART.lines().collect();
+    let half_h = lines.len() as f64 * 2.0;
+    let half_w = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as f64;
+    lines
+        .iter()
+        .enumerate()
+        .flat_map(|(r, line)| {
+            inked(line).map(move |(c, _)| {
+                let x = (c as f64 * 2.0 - half_w).abs().max(c as f64 * 2.0 + 2.0 - half_w);
+                let y = (r as f64 * 4.0 - half_h).abs().max(r as f64 * 4.0 + 4.0 - half_h);
+                (x * x + y * y).sqrt()
+            })
+        })
+        .fold(0.0, f64::max)
+}
+
+/// The menu fox, centered in the ring's hollow. Cells are replaced whole
+/// and blank art cells are skipped — fox and ring never share a cell, so
+/// their colors can't smear.
+fn draw_fox_in_den(frame: &mut Frame, area: Rect) {
+    let lines: Vec<&str> = FOX_ART.lines().collect();
+    let art_h = lines.len() as u16;
+    let art_w = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u16;
+    if area.width < art_w || area.height < art_h {
+        return;
+    }
+
+    let origin_x = area.x + (area.width - art_w) / 2;
+    let origin_y = area.y + (area.height - art_h) / 2;
+    let buf = frame.buffer_mut();
+    for (r, line) in lines.iter().enumerate() {
+        for (c, ch) in inked(line) {
+            if let Some(cell) = buf.cell_mut((origin_x + c as u16, origin_y + r as u16)) {
+                cell.set_char(ch);
+                cell.set_fg(FOX);
+            }
+        }
+    }
 }
 
 fn render_help(frame: &mut Frame, area: Rect, text: &str) {
