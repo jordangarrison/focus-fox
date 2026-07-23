@@ -92,6 +92,55 @@ impl Summary {
     }
 }
 
+/// Human duration for stat lines: whole minutes once >=1m, seconds below.
+pub fn fmt_focus(d: Duration) -> String {
+    let mins = d.as_secs() / 60;
+    if mins == 0 {
+        return format!("{}s", d.as_secs());
+    }
+    humantime::format_duration(Duration::from_secs(mins * 60)).to_string()
+}
+
+/// One line of the recent-history list, shared by CLI and TUI.
+pub fn recent_line(r: &Record) -> String {
+    format!(
+        "{}  {:<11} {:>7}  {}",
+        r.at.format("%a %H:%M"),
+        r.phase.label(),
+        fmt_focus(Duration::from_secs(r.actual_secs)),
+        if r.completed { "✓" } else { "⨯" },
+    )
+}
+
+/// Plain-text summary for `focus-fox stats`.
+pub fn render_text(s: &Summary) -> String {
+    if s.recent.is_empty() {
+        return "No sessions yet — run focus-fox and finish one. 🦊\n".to_string();
+    }
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Today      {} sessions · {}\n",
+        s.today_sessions,
+        fmt_focus(s.today_focus)
+    ));
+    out.push_str(&format!(
+        "This week  {} sessions · {}\n",
+        s.week_sessions,
+        fmt_focus(s.week_focus)
+    ));
+    out.push_str(&format!("Streak     {} days\n", s.streak_days));
+    out.push_str(&format!(
+        "Lifetime   {} sessions · {}\n",
+        s.lifetime_sessions,
+        fmt_focus(s.lifetime_focus)
+    ));
+    out.push_str("\nRecent:\n");
+    for r in &s.recent {
+        out.push_str(&format!("  {}\n", recent_line(r)));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,5 +262,33 @@ mod tests {
         assert_eq!(s.recent.len(), 10);
         assert_eq!(s.recent[0], records[11]);
         assert_eq!(s.recent[9], records[2]);
+    }
+
+    #[test]
+    fn render_text_shows_the_summary() {
+        let records = vec![
+            rec("2024-01-02", "10:00", Phase::Work, 25, true),
+            rec(TODAY, "09:00", Phase::Work, 25, true),
+            rec(TODAY, "09:30", Phase::ShortBreak, 5, true),
+        ];
+        let text = render_text(&Summary::compute(&records, d(TODAY)));
+        assert!(text.contains("Today      1 sessions · 25m"), "text was:\n{text}");
+        assert!(text.contains("Streak     2 days"));
+        assert!(text.contains("Lifetime   2 sessions · 50m"));
+        assert!(text.contains("Short Break"));
+    }
+
+    #[test]
+    fn render_text_with_no_history_is_friendly() {
+        let text = render_text(&Summary::compute(&[], d(TODAY)));
+        assert!(text.contains("No sessions yet"));
+    }
+
+    #[test]
+    fn fmt_focus_rounds_to_minutes() {
+        assert_eq!(fmt_focus(Duration::from_secs(1499)), "24m");
+        assert_eq!(fmt_focus(Duration::from_secs(4500)), "1h 15m");
+        assert_eq!(fmt_focus(Duration::from_secs(30)), "30s");
+        assert_eq!(fmt_focus(Duration::ZERO), "0s");
     }
 }
