@@ -1,8 +1,11 @@
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 use crate::config::Config;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Phase {
     Work,
     ShortBreak,

@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod notify;
+mod stats;
 mod timer;
 mod tui;
 
