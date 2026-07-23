@@ -1,10 +1,13 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::time::Duration;
 
 /// Focus Fox - a terminal pomodoro timer
 #[derive(Parser, Debug)]
 #[command(version, about)]
 pub struct Args {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// Work session length (e.g. "25m", "45m", "1h")
     #[arg(short, long, value_parser = humantime::parse_duration)]
     pub work: Option<Duration>,
@@ -28,4 +31,10 @@ pub struct Args {
     /// Disable the full-screen alert between sessions
     #[arg(long)]
     pub no_alert: bool,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Print session statistics and exit
+    Stats,
 }

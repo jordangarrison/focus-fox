@@ -44,6 +44,15 @@ module layout as sweet-nothings.
   progress gauge, and session dots.
 - **`src/notify/`** - Best-effort desktop notifications by shelling out to
   `notify-send`; failures never interrupt the timer.
+- **`src/stats/`** - Session history and statistics. Every phase that ends
+  (naturally or skipped) is appended as one JSON line to
+  `~/.local/share/focus-fox/history-<year>.jsonl` (year-partitioned; the
+  filename comes from the record's timestamp — that's the whole rotation
+  mechanism). `Summary::compute` is a pure fold over records (today/week/
+  streak/lifetime), unit tested like the timer. Viewed with `t` in the TUI
+  (an overlay — the timer keeps ticking) or `focus-fox stats` on the CLI.
+  Recording is best-effort: failures surface in the status line, never
+  interrupt the timer.
 - **`src/config/`** - XDG config (`~/.config/focus-fox/config.toml`, TOML,
   humantime durations). CLI args override file values via `merge_args`.
 - **`src/cli/`** - Clap argument parsing.

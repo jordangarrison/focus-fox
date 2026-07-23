@@ -141,6 +141,17 @@ pub fn render_text(s: &Summary) -> String {
     out
 }
 
+/// Entry point for `focus-fox stats`: load history, print, exit.
+pub fn print() -> anyhow::Result<()> {
+    use chrono::Datelike;
+    let now = chrono::Local::now();
+    let records = store::Store::default_dir()
+        .map(|dir| store::Store::new(dir).load_recent(now.year()))
+        .unwrap_or_default();
+    print!("{}", render_text(&Summary::compute(&records, now.date_naive())));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
