@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn fmt_focus_rounds_to_minutes() {
+    fn fmt_focus_truncates_to_minutes() {
         assert_eq!(fmt_focus(Duration::from_secs(1499)), "24m");
         assert_eq!(fmt_focus(Duration::from_secs(4500)), "1h 15m");
         assert_eq!(fmt_focus(Duration::from_secs(30)), "30s");
