@@ -390,5 +390,6 @@ mod tests {
         let mut app = app_on_timer(false);
         app.advance_clock(Duration::from_secs(10));
         assert!(app.store.is_none());
+        assert!(app.status.is_none());
     }
 }
