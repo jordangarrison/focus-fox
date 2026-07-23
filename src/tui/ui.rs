@@ -260,6 +260,8 @@ fn render_stats(frame: &mut Frame, s: &Summary) {
         ));
     }
 
+    let width = lines.iter().map(|l| l.width()).max().unwrap_or(0) as u16;
+
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -270,7 +272,7 @@ fn render_stats(frame: &mut Frame, s: &Summary) {
         ])
         .split(inner);
 
-    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), rows[1]);
+    frame.render_widget(Paragraph::new(lines), centered(rows[1], width));
     render_help(frame, rows[3], "t/esc close");
 }
 
