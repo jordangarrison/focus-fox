@@ -86,6 +86,9 @@ impl App {
                 announce(&self.config, phase);
                 if self.config.alert_screen {
                     self.alert = Some(phase);
+                    // The alert outranks the stats overlay — never let it
+                    // fire hidden underneath the panel.
+                    self.stats_view = None;
                 }
             }
         }
@@ -475,5 +478,16 @@ mod tests {
         let mut app = App::new(app_on_timer(false).config, Some(Store::new(dir.path().to_path_buf())));
         app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
         assert!(app.stats_view.is_some());
+    }
+
+    #[test]
+    fn alert_evicts_the_stats_overlay() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_store(dir.path());
+        app.config.alert_screen = true;
+        app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
+        app.advance_clock(Duration::from_secs(10)); // work ends under the overlay
+        assert!(app.stats_view.is_none());
+        assert_eq!(app.alert, Some(Phase::ShortBreak));
     }
 }
