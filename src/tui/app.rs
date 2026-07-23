@@ -6,6 +6,7 @@ use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers
 
 use crate::config::Config;
 use crate::notify;
+use crate::stats::{Record, store::Store};
 use crate::timer::{Phase, Timer};
 
 pub const MENU_ITEMS: [&str; 6] = [
@@ -29,16 +30,20 @@ pub struct App {
     /// When set, the timer is frozen on a full-screen alert announcing this
     /// upcoming phase until the user presses Enter.
     pub alert: Option<Phase>,
+    /// History log; None when the data dir can't be determined (recording
+    /// is best-effort, like notifications).
+    pub store: Option<Store>,
     should_quit: bool,
 }
 
 impl App {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config, store: Option<Store>) -> Self {
         Self {
             config,
             screen: Screen::Menu { selected: 0 },
             status: None,
             alert: None,
+            store,
             should_quit: false,
         }
     }
@@ -71,7 +76,9 @@ impl App {
             return;
         }
         if let Screen::Timer(timer) = &mut self.screen {
+            let (ended, planned) = (timer.phase, timer.total);
             if let Some(phase) = timer.tick(delta) {
+                record_phase_end(&self.store, &mut self.status, ended, planned, planned, true);
                 announce(&self.config, phase);
                 if self.config.alert_screen {
                     self.alert = Some(phase);
@@ -101,7 +108,16 @@ impl App {
                 KeyCode::Char('s') => {
                     self.alert = None;
                     if let Screen::Timer(timer) = &mut self.screen {
+                        let (ended, planned) = (timer.phase, timer.total);
                         let phase = timer.skip();
+                        record_phase_end(
+                            &self.store,
+                            &mut self.status,
+                            ended,
+                            planned,
+                            Duration::ZERO,
+                            false,
+                        );
                         announce(&self.config, phase);
                     }
                 }
@@ -130,7 +146,10 @@ impl App {
             Screen::Timer(timer) => match code {
                 KeyCode::Char(' ') | KeyCode::Char('p') => timer.toggle_pause(),
                 KeyCode::Char('s') => {
+                    let (ended, planned, elapsed) =
+                        (timer.phase, timer.total, timer.total - timer.remaining);
                     let phase = timer.skip();
+                    record_phase_end(&self.store, &mut self.status, ended, planned, elapsed, false);
                     announce(&self.config, phase);
                 }
                 KeyCode::Char('r') => timer.reset(),
@@ -179,6 +198,41 @@ fn bump_duration(d: Duration, dir: i64) -> Duration {
     Duration::from_secs(snapped.max(60))
 }
 
+fn announce(config: &Config, phase: Phase) {
+    if !config.notify {
+        return;
+    }
+    let (summary, body) = match phase {
+        Phase::Work => ("Back to it 🦊", "Time to focus."),
+        Phase::ShortBreak => ("Break time", "Stretch your legs for a bit."),
+        Phase::LongBreak => ("Long break", "You earned it. Step away."),
+    };
+    notify::send(summary, body);
+}
+
+/// Best-effort history append — a failure surfaces in the status line and
+/// never interrupts the timer.
+fn record_phase_end(
+    store: &Option<Store>,
+    status: &mut Option<String>,
+    phase: Phase,
+    planned: Duration,
+    elapsed: Duration,
+    completed: bool,
+) {
+    let Some(store) = store else { return };
+    let record = Record {
+        at: chrono::Local::now().fixed_offset(),
+        phase,
+        planned_secs: planned.as_secs(),
+        actual_secs: elapsed.as_secs(),
+        completed,
+    };
+    if let Err(err) = store.append(&record) {
+        *status = Some(format!("history save failed: {err}"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,7 +268,7 @@ mod tests {
             notify: false,
             alert_screen,
         };
-        let mut app = App::new(config.clone());
+        let mut app = App::new(config.clone(), None);
         app.screen = Screen::Timer(Timer::new(config));
         app
     }
@@ -275,16 +329,66 @@ mod tests {
         app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
         assert_eq!(app.alert, None);
     }
-}
 
-fn announce(config: &Config, phase: Phase) {
-    if !config.notify {
-        return;
+    use crate::stats::store::Store;
+
+    fn app_with_store(dir: &std::path::Path) -> App {
+        let mut app = app_on_timer(false);
+        app.store = Some(Store::new(dir.to_path_buf()));
+        app
     }
-    let (summary, body) = match phase {
-        Phase::Work => ("Back to it 🦊", "Time to focus."),
-        Phase::ShortBreak => ("Break time", "Stretch your legs for a bit."),
-        Phase::LongBreak => ("Long break", "You earned it. Step away."),
-    };
-    notify::send(summary, body);
+
+    fn load_records(app: &App) -> Vec<crate::stats::Record> {
+        use chrono::Datelike;
+        app.store
+            .as_ref()
+            .unwrap()
+            .load_recent(chrono::Local::now().year())
+    }
+
+    #[test]
+    fn natural_finish_appends_a_completed_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_store(dir.path());
+        app.advance_clock(Duration::from_secs(10)); // work ends
+        let records = load_records(&app);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].phase, Phase::Work);
+        assert_eq!(records[0].planned_secs, 10);
+        assert_eq!(records[0].actual_secs, 10);
+        assert!(records[0].completed);
+    }
+
+    #[test]
+    fn skip_appends_a_partial_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_store(dir.path());
+        app.advance_clock(Duration::from_secs(4));
+        app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
+        let records = load_records(&app);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].actual_secs, 4);
+        assert!(!records[0].completed);
+    }
+
+    #[test]
+    fn skip_from_alert_records_the_announced_phase_as_unstarted() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_store(dir.path());
+        app.config.alert_screen = true;
+        app.advance_clock(Duration::from_secs(10)); // work done -> break alert
+        app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE); // skip the break
+        let records = load_records(&app);
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[1].phase, Phase::ShortBreak);
+        assert_eq!(records[1].actual_secs, 0);
+        assert!(!records[1].completed);
+    }
+
+    #[test]
+    fn no_store_means_no_recording_and_no_crash() {
+        let mut app = app_on_timer(false);
+        app.advance_clock(Duration::from_secs(10));
+        assert!(app.store.is_none());
+    }
 }
