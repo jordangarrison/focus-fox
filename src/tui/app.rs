@@ -6,7 +6,7 @@ use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers
 
 use crate::config::Config;
 use crate::notify;
-use crate::stats::{Record, store::Store};
+use crate::stats::{Record, Summary, store::Store};
 use crate::timer::{Phase, Timer};
 
 pub const MENU_ITEMS: [&str; 6] = [
@@ -33,6 +33,9 @@ pub struct App {
     /// History log; None when the data dir can't be determined (recording
     /// is best-effort, like notifications).
     pub store: Option<Store>,
+    /// When set, a stats panel is drawn over the current screen. The timer
+    /// keeps ticking underneath.
+    pub stats_view: Option<Summary>,
     should_quit: bool,
 }
 
@@ -44,6 +47,7 @@ impl App {
             status: None,
             alert: None,
             store,
+            stats_view: None,
             should_quit: false,
         }
     }
@@ -90,7 +94,7 @@ impl App {
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
         self.status = None;
         match code {
-            KeyCode::Char('q') | KeyCode::Esc => {
+            KeyCode::Char('q') => {
                 self.should_quit = true;
                 return;
             }
@@ -99,6 +103,17 @@ impl App {
                 return;
             }
             _ => {}
+        }
+        // The stats overlay swallows Esc (close, don't quit) and toggles on t.
+        if self.stats_view.is_some() {
+            if matches!(code, KeyCode::Esc | KeyCode::Char('t')) {
+                self.stats_view = None;
+            }
+            return;
+        }
+        if code == KeyCode::Esc {
+            self.should_quit = true;
+            return;
         }
         if self.alert.is_some() {
             match code {
@@ -123,6 +138,10 @@ impl App {
                 }
                 _ => {}
             }
+            return;
+        }
+        if code == KeyCode::Char('t') {
+            self.open_stats();
             return;
         }
         match &mut self.screen {
@@ -181,6 +200,18 @@ impl App {
         if let Err(err) = self.config.save() {
             self.status = Some(format!("save failed: {err}"));
         }
+    }
+
+    /// Load history and compute the summary once, at open time.
+    fn open_stats(&mut self) {
+        use chrono::Datelike;
+        let now = chrono::Local::now();
+        let records = self
+            .store
+            .as_ref()
+            .map(|s| s.load_recent(now.year()))
+            .unwrap_or_default();
+        self.stats_view = Some(Summary::compute(&records, now.date_naive()));
     }
 }
 
@@ -391,5 +422,58 @@ mod tests {
         app.advance_clock(Duration::from_secs(10));
         assert!(app.store.is_none());
         assert!(app.status.is_none());
+    }
+
+    #[test]
+    fn t_opens_stats_and_esc_closes_without_quitting() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_store(dir.path());
+        app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
+        assert!(app.stats_view.is_some());
+        app.handle_key(KeyCode::Esc, KeyModifiers::NONE);
+        assert!(app.stats_view.is_none());
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn t_also_closes_the_stats_overlay() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_store(dir.path());
+        app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
+        app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
+        assert!(app.stats_view.is_none());
+    }
+
+    #[test]
+    fn timer_keeps_ticking_under_the_stats_overlay() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_store(dir.path());
+        app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
+        app.advance_clock(Duration::from_secs(3));
+        assert_eq!(remaining(&app), Duration::from_secs(7));
+    }
+
+    #[test]
+    fn t_is_ignored_while_an_alert_is_up() {
+        let mut app = app_on_timer(true);
+        app.advance_clock(Duration::from_secs(10)); // -> alert
+        app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
+        assert!(app.stats_view.is_none());
+        assert_eq!(app.alert, Some(Phase::ShortBreak));
+    }
+
+    #[test]
+    fn esc_still_quits_when_no_overlay_is_open() {
+        let mut app = app_on_timer(false);
+        app.handle_key(KeyCode::Esc, KeyModifiers::NONE);
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn stats_opens_from_the_menu_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = App::new(app_on_timer(false).config, Some(Store::new(dir.path().to_path_buf())));
+        app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
+        assert!(app.stats_view.is_some());
     }
 }

@@ -4,9 +4,10 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::canvas::{Canvas, Points};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use super::app::{App, MENU_ITEMS, Screen};
+use crate::stats::{self, Summary};
 use crate::timer::{Phase, Timer};
 
 const FOX: Color = Color::LightYellow;
@@ -17,13 +18,16 @@ pub fn render(frame: &mut Frame, app: &App) {
         (Screen::Timer(timer), None) => render_timer(frame, timer),
         (Screen::Menu { selected }, _) => render_menu(frame, app, *selected),
     }
+    if let Some(summary) = &app.stats_view {
+        render_stats(frame, summary);
+    }
 }
 
-fn frame_block(frame: &mut Frame, accent: Color) -> Rect {
+fn frame_block(frame: &mut Frame, accent: Color, title: &str) -> Rect {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(accent))
-        .title(" 🦊 Focus Fox ")
+        .title(title.to_string())
         .title_alignment(Alignment::Center);
     let inner = block.inner(frame.area());
     frame.render_widget(block, frame.area());
@@ -50,7 +54,7 @@ const FOX_ART: &str = "\
 ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀";
 
 fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
-    let inner = frame_block(frame, FOX);
+    let inner = frame_block(frame, FOX, " 🦊 Focus Fox ");
 
     let fox_height = FOX_ART.lines().count() as u16;
     let rows = Layout::default()
@@ -112,7 +116,11 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
         );
     }
 
-    render_help(frame, rows[6], "↑↓ select · ←→ adjust · enter start · q quit");
+    render_help(
+        frame,
+        rows[6],
+        "↑↓ select · ←→ adjust · enter start · t stats · q quit",
+    );
 }
 
 /// Center the fox as a block: left-aligned inside a width-fitted rect, so
@@ -137,7 +145,7 @@ fn phase_color(phase: Phase) -> Color {
 
 fn render_timer(frame: &mut Frame, timer: &Timer) {
     let accent = phase_color(timer.phase);
-    let inner = frame_block(frame, accent);
+    let inner = frame_block(frame, accent, " 🦊 Focus Fox ");
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -158,7 +166,7 @@ fn render_timer(frame: &mut Frame, timer: &Timer) {
     render_help(
         frame,
         rows[6],
-        "space pause · s skip · r reset · m menu · q quit",
+        "space pause · s skip · r reset · t stats · m menu · q quit",
     );
 }
 
@@ -168,7 +176,7 @@ fn render_timer(frame: &mut Frame, timer: &Timer) {
 /// until the user presses Enter.
 fn render_alert(frame: &mut Frame, timer: &Timer, phase: Phase) {
     let accent = phase_color(phase);
-    let inner = frame_block(frame, accent);
+    let inner = frame_block(frame, accent, " 🦊 Focus Fox ");
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -219,6 +227,58 @@ fn render_alert(frame: &mut Frame, timer: &Timer, phase: Phase) {
     );
 
     render_help(frame, rows[6], "enter continue · s skip · q quit");
+}
+
+// --- Stats overlay ---
+
+/// Full-frame stats panel drawn over the current screen; the timer keeps
+/// ticking underneath.
+fn render_stats(frame: &mut Frame, s: &Summary) {
+    frame.render_widget(Clear, frame.area());
+    let inner = frame_block(frame, FOX, " 🦊 Stats ");
+
+    let mut lines: Vec<Line> = vec![
+        stat_line("Today", s.today_sessions, s.today_focus),
+        stat_line("This week", s.week_sessions, s.week_focus),
+        Line::from(format!("{:<10} {} days", "Streak", s.streak_days)),
+        stat_line("Lifetime", s.lifetime_sessions, s.lifetime_focus),
+    ];
+    if !s.recent.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(Line::styled(
+            "Recent",
+            Style::default().fg(FOX).add_modifier(Modifier::BOLD),
+        ));
+        lines.extend(s.recent.iter().map(|r| {
+            Line::styled(stats::recent_line(r), Style::default().fg(Color::Gray))
+        }));
+    } else {
+        lines.push(Line::raw(""));
+        lines.push(Line::styled(
+            "No sessions yet — finish one. 🦊",
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Fill(1),
+            Constraint::Length(lines.len() as u16),
+            Constraint::Fill(1),
+            Constraint::Length(1), // key help
+        ])
+        .split(inner);
+
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), rows[1]);
+    render_help(frame, rows[3], "t/esc close");
+}
+
+fn stat_line(label: &str, sessions: u32, focus: std::time::Duration) -> Line<'static> {
+    Line::from(format!(
+        "{label:<10} {sessions} sessions · {}",
+        stats::fmt_focus(focus)
+    ))
 }
 
 fn render_phase_line(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
