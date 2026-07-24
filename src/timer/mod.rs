@@ -69,6 +69,17 @@ impl Timer {
         self.remaining = self.total;
     }
 
+    /// Jump the clock toward the end of the phase. Landing on zero lets the
+    /// next tick end the phase as a natural completion.
+    pub fn seek_forward(&mut self, step: Duration) {
+        self.remaining = self.remaining.saturating_sub(step);
+    }
+
+    /// Jump the clock back toward the start of the phase, clamped there.
+    pub fn seek_back(&mut self, step: Duration) {
+        self.remaining = (self.remaining + step).min(self.total);
+    }
+
     pub fn toggle_pause(&mut self) {
         self.paused = !self.paused;
     }
@@ -167,6 +178,29 @@ mod tests {
         let mut t = Timer::new(config());
         t.toggle_pause();
         assert_eq!(t.tick(Duration::from_secs(60)), None);
+        assert_eq!(t.remaining, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn seek_forward_jumps_ahead_and_saturates_at_zero() {
+        let mut t = Timer::new(config());
+        t.seek_forward(Duration::from_secs(4));
+        assert_eq!(t.remaining, Duration::from_secs(6));
+        t.seek_forward(Duration::from_secs(60));
+        assert_eq!(t.remaining, Duration::ZERO);
+        // The phase hasn't ended yet — the next tick ends it naturally.
+        assert_eq!(t.completed_work, 0);
+        assert_eq!(t.tick(Duration::from_millis(1)), Some(Phase::ShortBreak));
+        assert_eq!(t.completed_work, 1);
+    }
+
+    #[test]
+    fn seek_back_rewinds_and_clamps_at_phase_start() {
+        let mut t = Timer::new(config());
+        t.tick(Duration::from_secs(7));
+        t.seek_back(Duration::from_secs(4));
+        assert_eq!(t.remaining, Duration::from_secs(7));
+        t.seek_back(Duration::from_secs(60));
         assert_eq!(t.remaining, Duration::from_secs(10));
     }
 

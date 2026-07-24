@@ -166,7 +166,7 @@ fn render_timer(frame: &mut Frame, timer: &Timer) {
     render_help(
         frame,
         rows[6],
-        "space pause · s skip · r reset · t stats · m menu · q quit",
+        "space pause · s skip · r reset · h/l ±1m · t stats · m menu · q quit",
     );
 }
 

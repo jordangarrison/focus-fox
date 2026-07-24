@@ -39,6 +39,9 @@ module layout as sweet-nothings.
   persist between runs) and the timer screen. When a phase ends naturally
   (and the "Alert screen" setting is on), a full-screen alert freezes the
   timer until Enter is pressed (`App.alert`); manual skips bypass it.
+  On the timer screen, `←`/`→` (or `h`/`l`) scrub the clock ±1 minute
+  (`Timer::seek_back`/`seek_forward`); forward past the end finishes the
+  phase naturally on the next tick.
   `app.rs` owns the event loop (100ms tick, keyboard handling), `ui.rs`
   renders the menu, the alert banner, and the big block-digit clock,
   progress gauge, and session dots.
@@ -56,6 +59,17 @@ module layout as sweet-nothings.
 - **`src/config/`** - XDG config (`~/.config/focus-fox/config.toml`, TOML,
   humantime durations). CLI args override file values via `merge_args`.
 - **`src/cli/`** - Clap argument parsing.
+
+## Documentation
+
+Whenever a change is user-visible — new keybindings, new features, new
+CLI flags or subcommands, changed behavior — update the docs in the same
+commit:
+
+- **README.md** — the Keys tables, Usage examples, and Configuration
+  section are the user-facing reference; keep them in sync.
+- **The in-app help line** in `src/tui/ui.rs` (`render_help` calls).
+- **This file** — the Module Structure descriptions above.
 
 ## Releases
 

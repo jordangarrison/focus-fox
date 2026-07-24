@@ -9,6 +9,9 @@ use crate::notify;
 use crate::stats::{Record, Summary, store::Store};
 use crate::timer::{Phase, Timer};
 
+/// How far one left/right keypress scrubs the running timer.
+const SEEK_STEP: Duration = Duration::from_secs(60);
+
 pub const MENU_ITEMS: [&str; 6] = [
     "Work",
     "Short break",
@@ -175,6 +178,8 @@ impl App {
                     announce(&self.config, phase);
                 }
                 KeyCode::Char('r') => timer.reset(),
+                KeyCode::Right | KeyCode::Char('l') => timer.seek_forward(SEEK_STEP),
+                KeyCode::Left | KeyCode::Char('h') => timer.seek_back(SEEK_STEP),
                 KeyCode::Char('m') => self.screen = Screen::Menu { selected: 0 },
                 _ => {}
             },
@@ -355,6 +360,30 @@ mod tests {
         assert_eq!(app.alert, None);
         app.advance_clock(Duration::from_secs(1));
         assert_eq!(remaining(&app), Duration::from_secs(1));
+    }
+
+    #[test]
+    fn arrows_scrub_the_running_timer() {
+        let mut app = app_on_timer(false);
+        app.handle_key(KeyCode::Right, KeyModifiers::NONE);
+        assert_eq!(remaining(&app), Duration::from_secs(10).saturating_sub(SEEK_STEP));
+        app.handle_key(KeyCode::Char('h'), KeyModifiers::NONE);
+        assert_eq!(remaining(&app), Duration::from_secs(10));
+        // Rewinding never goes past the start of the phase.
+        app.handle_key(KeyCode::Left, KeyModifiers::NONE);
+        assert_eq!(remaining(&app), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn seeking_past_the_end_completes_the_phase_naturally() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_store(dir.path());
+        app.handle_key(KeyCode::Char('l'), KeyModifiers::NONE); // 10s phase, 60s jump
+        assert_eq!(remaining(&app), Duration::ZERO);
+        app.advance_clock(Duration::from_millis(100));
+        let records = load_records(&app);
+        assert_eq!(records.len(), 1);
+        assert!(records[0].completed);
     }
 
     #[test]

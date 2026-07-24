@@ -69,6 +69,7 @@ fox                             # 25m work / 5m break / 15m long break every 4
 fox -w 45m -b 10m               # custom work and break lengths
 fox --sessions 3                # long break after 3 work sessions
 fox --no-notify                 # skip desktop notifications
+fox stats                       # session history summary (today/week/streak)
 ```
 
 The binary is installed as both `fox` and `focus-fox` — same program.
@@ -91,13 +92,18 @@ Menu changes are saved automatically and persist between app starts.
 
 Timer:
 
-| Key         | Action              |
-|-------------|---------------------|
-| `space`/`p` | pause / resume      |
-| `s`         | skip to next phase  |
-| `r`         | restart this phase  |
-| `m`         | back to the menu    |
-| `q`/`Esc`   | quit                |
+| Key         | Action                      |
+|-------------|-----------------------------|
+| `space`/`p` | pause / resume              |
+| `s`         | skip to next phase          |
+| `r`         | restart this phase          |
+| `←`/`→`, `h`/`l` | jump back / forward 1m |
+| `t`         | stats overlay (`t`/`Esc` closes) |
+| `m`         | back to the menu            |
+| `q`/`Esc`   | quit                        |
+
+Jumping forward past the end finishes the phase as if it ran out
+naturally; jumping back stops at the start of the phase.
 
 ## Configuration
 
