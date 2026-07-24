@@ -29,9 +29,35 @@ Grab a package from the [latest release](https://github.com/jordangarrison/focus
 | Arch | `focus-fox-*.pkg.tar.zst` — `sudo pacman -U focus-fox-*.pkg.tar.zst` |
 | Any Linux (static) | `focus-fox-*-linux.tar.gz` — untar and drop `fox` on your `PATH` |
 | macOS (Apple Silicon) | `focus-fox-*-aarch64-darwin.tar.gz` — untar and drop `fox` on your `PATH` |
-| Nix | `nix profile install github:jordangarrison/focus-fox` |
+| Nix | see [Nix](#nix) below |
 
 Windows: use WSL with any of the Linux options.
+
+### Nix
+
+Try it without installing:
+
+```bash
+nix run github:jordangarrison/focus-fox
+```
+
+Install into your profile:
+
+```bash
+nix profile install github:jordangarrison/focus-fox
+```
+
+Or add it as a flake input to your NixOS / home-manager config:
+
+```nix
+{
+  inputs.focus-fox.url = "github:jordangarrison/focus-fox";
+
+  # then in your system or home-manager packages:
+  # environment.systemPackages = [ inputs.focus-fox.packages.${pkgs.system}.default ];
+  # home.packages = [ inputs.focus-fox.packages.${pkgs.system}.default ];
+}
+```
 
 Desktop notifications shell out to `notify-send` (Linux), so install
 `libnotify` if you want them; the timer works fine without it.
