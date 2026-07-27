@@ -7,18 +7,20 @@ use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers
 use crate::config::Config;
 use crate::notify;
 use crate::stats::{Record, Summary, store::Store};
+use crate::theme::{Palette, ThemeMode};
 use crate::timer::{Phase, Timer};
 
 /// How far one left/right keypress scrubs the running timer.
 const SEEK_STEP: Duration = Duration::from_secs(60);
 
-pub const MENU_ITEMS: [&str; 6] = [
+pub const MENU_ITEMS: [&str; 7] = [
     "Work",
     "Short break",
     "Long break",
     "Sessions",
     "Notifications",
     "Alert screen",
+    "Theme",
 ];
 
 pub enum Screen {
@@ -39,11 +41,12 @@ pub struct App {
     /// When set, a stats panel is drawn over the current screen. The timer
     /// keeps ticking underneath.
     pub stats_view: Option<Summary>,
+    detected_theme: ThemeMode,
     should_quit: bool,
 }
 
 impl App {
-    pub fn new(config: Config, store: Option<Store>) -> Self {
+    pub fn new(config: Config, store: Option<Store>, detected_theme: ThemeMode) -> Self {
         Self {
             config,
             screen: Screen::Menu { selected: 0 },
@@ -51,8 +54,17 @@ impl App {
             alert: None,
             store,
             stats_view: None,
+            detected_theme,
             should_quit: false,
         }
+    }
+
+    pub fn theme_mode(&self) -> ThemeMode {
+        self.config.theme.resolve(self.detected_theme)
+    }
+
+    pub fn palette(&self) -> Palette {
+        self.theme_mode().palette()
     }
 
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
@@ -62,12 +74,11 @@ impl App {
         while !self.should_quit {
             terminal.draw(|frame| super::ui::render(frame, &self))?;
 
-            if event::poll(tick_rate)? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind == KeyEventKind::Press {
-                        self.handle_key(key.code, key.modifiers);
-                    }
-                }
+            if event::poll(tick_rate)?
+                && let Event::Key(key) = event::read()?
+                && key.kind == KeyEventKind::Press
+            {
+                self.handle_key(key.code, key.modifiers);
             }
 
             let now = Instant::now();
@@ -174,7 +185,14 @@ impl App {
                     let (ended, planned, elapsed) =
                         (timer.phase, timer.total, timer.total - timer.remaining);
                     let phase = timer.skip();
-                    record_phase_end(&self.store, &mut self.status, ended, planned, elapsed, false);
+                    record_phase_end(
+                        &self.store,
+                        &mut self.status,
+                        ended,
+                        planned,
+                        elapsed,
+                        false,
+                    );
                     announce(&self.config, phase);
                 }
                 KeyCode::Char('r') => timer.reset(),
@@ -202,6 +220,7 @@ impl App {
             }
             4 => c.notify = !c.notify,
             5 => c.alert_screen = !c.alert_screen,
+            6 => c.theme = c.theme.adjust(dir),
             _ => {}
         }
         // Menu settings persist between app starts; only surface failures.
@@ -298,6 +317,16 @@ mod tests {
         assert_eq!(bump_duration(mins(7), -1), mins(5));
     }
 
+    #[test]
+    fn menu_adjusts_and_resolves_theme() {
+        let mut app = App::new(Config::default(), None, ThemeMode::Light);
+        assert_eq!(app.theme_mode(), ThemeMode::Light);
+
+        app.adjust(6, 1);
+        assert_eq!(app.config.theme, crate::theme::ThemePreference::Dark);
+        assert_eq!(app.theme_mode(), ThemeMode::Dark);
+    }
+
     fn app_on_timer(alert_screen: bool) -> App {
         let config = Config {
             work: Duration::from_secs(10),
@@ -306,8 +335,9 @@ mod tests {
             sessions_before_long_break: 4,
             notify: false,
             alert_screen,
+            theme: crate::theme::ThemePreference::Auto,
         };
-        let mut app = App::new(config.clone(), None);
+        let mut app = App::new(config.clone(), None, ThemeMode::Dark);
         app.screen = Screen::Timer(Timer::new(config));
         app
     }
@@ -366,7 +396,10 @@ mod tests {
     fn arrows_scrub_the_running_timer() {
         let mut app = app_on_timer(false);
         app.handle_key(KeyCode::Right, KeyModifiers::NONE);
-        assert_eq!(remaining(&app), Duration::from_secs(10).saturating_sub(SEEK_STEP));
+        assert_eq!(
+            remaining(&app),
+            Duration::from_secs(10).saturating_sub(SEEK_STEP)
+        );
         app.handle_key(KeyCode::Char('h'), KeyModifiers::NONE);
         assert_eq!(remaining(&app), Duration::from_secs(10));
         // Rewinding never goes past the start of the phase.
@@ -504,7 +537,11 @@ mod tests {
     #[test]
     fn stats_opens_from_the_menu_too() {
         let dir = tempfile::tempdir().unwrap();
-        let mut app = App::new(app_on_timer(false).config, Some(Store::new(dir.path().to_path_buf())));
+        let mut app = App::new(
+            app_on_timer(false).config,
+            Some(Store::new(dir.path().to_path_buf())),
+            ThemeMode::Dark,
+        );
         app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
         assert!(app.stats_view.is_some());
     }

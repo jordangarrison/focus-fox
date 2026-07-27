@@ -8,18 +8,18 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use super::app::{App, MENU_ITEMS, Screen};
 use crate::stats::{self, Summary};
+use crate::theme::Palette;
 use crate::timer::{Phase, Timer};
 
-const FOX: Color = Color::LightYellow;
-
 pub fn render(frame: &mut Frame, app: &App) {
+    let palette = app.palette();
     match (&app.screen, app.alert) {
-        (Screen::Timer(timer), Some(phase)) => render_alert(frame, timer, phase),
-        (Screen::Timer(timer), None) => render_timer(frame, timer),
-        (Screen::Menu { selected }, _) => render_menu(frame, app, *selected),
+        (Screen::Timer(timer), Some(phase)) => render_alert(frame, timer, phase, palette),
+        (Screen::Timer(timer), None) => render_timer(frame, timer, palette),
+        (Screen::Menu { selected }, _) => render_menu(frame, app, *selected, palette),
     }
     if let Some(summary) = &app.stats_view {
-        render_stats(frame, summary);
+        render_stats(frame, summary, palette);
     }
 }
 
@@ -53,8 +53,8 @@ const FOX_ART: &str = "\
 ⠀⠀⠀⠀⠙⠿⣿⣿⣿⣿⣿⣿⣿⡿⠿⠛⠋⠉⠁⠀⠀⠀⠀⠈⠛⠃⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠉⠉⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀";
 
-fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
-    let inner = frame_block(frame, FOX, " 🦊 Focus Fox ");
+fn render_menu(frame: &mut Frame, app: &App, selected: usize, palette: Palette) {
+    let inner = frame_block(frame, palette.fox, " 🦊 Focus Fox ");
 
     let fox_height = FOX_ART.lines().count() as u16;
     let rows = Layout::default()
@@ -70,9 +70,13 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
         ])
         .split(inner);
 
-    render_fox(frame, rows[1]);
+    render_fox(frame, rows[1], palette);
 
     let c = &app.config;
+    let theme = match c.theme {
+        crate::theme::ThemePreference::Auto => format!("auto ({})", app.theme_mode()),
+        preference => preference.to_string(),
+    };
     let values = [
         humantime::format_duration(c.work).to_string(),
         humantime::format_duration(c.short_break).to_string(),
@@ -80,6 +84,7 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
         c.sessions_before_long_break.to_string(),
         if c.notify { "on" } else { "off" }.to_string(),
         if c.alert_screen { "on" } else { "off" }.to_string(),
+        theme,
     ];
 
     let mut lines: Vec<Line> = MENU_ITEMS
@@ -89,28 +94,27 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
         .map(|(i, (label, value))| {
             let marker = if i == selected { "▸ " } else { "  " };
             let style = if i == selected {
-                Style::default().fg(FOX).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(palette.fox)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
-            Line::styled(format!("{marker}{label:<15} ◂ {value:>7} ▸"), style)
+            Line::styled(format!("{marker}{label:<15} ◂ {value:>11} ▸"), style)
         })
         .collect();
     lines.push(Line::raw(""));
     lines.push(Line::styled(
         "press enter to start",
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(palette.muted),
     ));
 
-    frame.render_widget(
-        Paragraph::new(lines).alignment(Alignment::Center),
-        rows[3],
-    );
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), rows[3]);
 
     if let Some(status) = &app.status {
         frame.render_widget(
             Paragraph::new(status.as_str())
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(palette.warning))
                 .alignment(Alignment::Center),
             rows[5],
         );
@@ -120,31 +124,36 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize) {
         frame,
         rows[6],
         "↑↓ select · ←→ adjust · enter start · t stats · q quit",
+        palette,
     );
 }
 
 /// Center the fox as a block: left-aligned inside a width-fitted rect, so
 /// the art's internal indentation survives (per-line centering would skew it).
-fn render_fox(frame: &mut Frame, area: Rect) {
-    let width = FOX_ART.lines().map(|l| l.chars().count()).max().unwrap_or(0) as u16;
+fn render_fox(frame: &mut Frame, area: Rect, palette: Palette) {
+    let width = FOX_ART
+        .lines()
+        .map(|l| l.chars().count())
+        .max()
+        .unwrap_or(0) as u16;
     frame.render_widget(
-        Paragraph::new(FOX_ART).style(Style::default().fg(FOX)),
+        Paragraph::new(FOX_ART).style(Style::default().fg(palette.fox)),
         centered(area, width),
     );
 }
 
 // --- Timer screen ---
 
-fn phase_color(phase: Phase) -> Color {
+fn phase_color(phase: Phase, palette: Palette) -> Color {
     match phase {
-        Phase::Work => Color::LightRed,
-        Phase::ShortBreak => Color::LightGreen,
-        Phase::LongBreak => Color::LightBlue,
+        Phase::Work => palette.work,
+        Phase::ShortBreak => palette.short_break,
+        Phase::LongBreak => palette.long_break,
     }
 }
 
-fn render_timer(frame: &mut Frame, timer: &Timer) {
-    let accent = phase_color(timer.phase);
+fn render_timer(frame: &mut Frame, timer: &Timer, palette: Palette) {
+    let accent = phase_color(timer.phase, palette);
     let inner = frame_block(frame, accent, " 🦊 Focus Fox ");
 
     let rows = Layout::default()
@@ -160,13 +169,14 @@ fn render_timer(frame: &mut Frame, timer: &Timer) {
         ])
         .split(inner);
 
-    render_phase_line(frame, rows[1], timer, accent);
-    render_clock(frame, rows[3], timer, accent);
-    render_pie(frame, rows[5], timer, accent);
+    render_phase_line(frame, rows[1], timer, accent, palette);
+    render_clock(frame, rows[3], timer, accent, palette);
+    render_pie(frame, rows[5], timer, accent, palette);
     render_help(
         frame,
         rows[6],
         "space pause · s skip · r reset · h/l ±1m · t stats · m menu · q quit",
+        palette,
     );
 }
 
@@ -174,8 +184,8 @@ fn render_timer(frame: &mut Frame, timer: &Timer) {
 
 /// Full-screen banner shown between phases; the timer is frozen behind it
 /// until the user presses Enter.
-fn render_alert(frame: &mut Frame, timer: &Timer, phase: Phase) {
-    let accent = phase_color(phase);
+fn render_alert(frame: &mut Frame, timer: &Timer, phase: Phase, palette: Palette) {
+    let accent = phase_color(phase, palette);
     let inner = frame_block(frame, accent, " 🦊 Focus Fox ");
 
     let rows = Layout::default()
@@ -221,21 +231,21 @@ fn render_alert(frame: &mut Frame, timer: &Timer, phase: Phase) {
             timer.phase.label(),
             humantime::format_duration(timer.total)
         ))
-        .style(Style::default().fg(Color::DarkGray))
+        .style(Style::default().fg(palette.muted))
         .alignment(Alignment::Center),
         rows[4],
     );
 
-    render_help(frame, rows[6], "enter continue · s skip · q quit");
+    render_help(frame, rows[6], "enter continue · s skip · q quit", palette);
 }
 
 // --- Stats overlay ---
 
 /// Full-frame stats panel drawn over the current screen; the timer keeps
 /// ticking underneath.
-fn render_stats(frame: &mut Frame, s: &Summary) {
+fn render_stats(frame: &mut Frame, s: &Summary, palette: Palette) {
     frame.render_widget(Clear, frame.area());
-    let inner = frame_block(frame, FOX, " 🦊 Stats ");
+    let inner = frame_block(frame, palette.fox, " 🦊 Stats ");
 
     let mut lines: Vec<Line> = vec![
         stat_line("Today", s.today_sessions, s.today_focus),
@@ -247,16 +257,21 @@ fn render_stats(frame: &mut Frame, s: &Summary) {
         lines.push(Line::raw(""));
         lines.push(Line::styled(
             "Recent",
-            Style::default().fg(FOX).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(palette.fox)
+                .add_modifier(Modifier::BOLD),
         ));
         lines.extend(s.recent.iter().map(|r| {
-            Line::styled(stats::recent_line(r), Style::default().fg(Color::Gray))
+            Line::styled(
+                stats::recent_line(r),
+                Style::default().fg(palette.secondary),
+            )
         }));
     } else {
         lines.push(Line::raw(""));
         lines.push(Line::styled(
             "No sessions yet — finish one. 🦊",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(palette.muted),
         ));
     }
 
@@ -273,7 +288,7 @@ fn render_stats(frame: &mut Frame, s: &Summary) {
         .split(inner);
 
     frame.render_widget(Paragraph::new(lines), centered(rows[1], width));
-    render_help(frame, rows[3], "t/esc close");
+    render_help(frame, rows[3], "t/esc close", palette);
 }
 
 fn stat_line(label: &str, sessions: u32, focus: std::time::Duration) -> Line<'static> {
@@ -283,7 +298,13 @@ fn stat_line(label: &str, sessions: u32, focus: std::time::Duration) -> Line<'st
     ))
 }
 
-fn render_phase_line(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
+fn render_phase_line(
+    frame: &mut Frame,
+    area: Rect,
+    timer: &Timer,
+    accent: Color,
+    palette: Palette,
+) {
     let (done, total) = timer.cycle_position();
     let dots: String = (0..total)
         .map(|i| if i < done { '●' } else { '○' })
@@ -300,7 +321,7 @@ fn render_phase_line(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color
     if timer.paused {
         spans.push(Span::styled(
             "  ⏸ paused",
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(palette.warning),
         ));
     }
     frame.render_widget(
@@ -309,12 +330,12 @@ fn render_phase_line(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color
     );
 }
 
-fn render_clock(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
+fn render_clock(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color, palette: Palette) {
     let secs = timer.remaining.as_secs();
     let text = format!("{:02}:{:02}", secs / 60, secs % 60);
     let lines = big_text(&text);
     let style = if timer.paused {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(palette.muted)
     } else {
         Style::default().fg(accent).add_modifier(Modifier::BOLD)
     };
@@ -332,7 +353,7 @@ fn render_clock(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
 /// terminal cell, so the circle stays round at any size. The circle fills
 /// 80% of the limiting dimension; when it's big enough to hold the fox art
 /// it hollows into a ring with the fox denned inside.
-fn render_pie(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
+fn render_pie(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color, palette: Palette) {
     use std::f64::consts::{FRAC_PI_2, TAU};
 
     let progress = timer.progress().clamp(0.0, 1.0);
@@ -355,10 +376,10 @@ fn render_pie(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
             if d2 > radius * radius {
                 continue;
             }
-            if let Some(inner) = hole {
-                if d2 < inner * inner {
-                    continue;
-                }
+            if let Some(inner) = hole
+                && d2 < inner * inner
+            {
+                continue;
             }
             let t = (FRAC_PI_2 - y.atan2(x)).rem_euclid(TAU) / TAU;
             let dot = (ix as f64 + 0.5, iy as f64 + 0.5);
@@ -377,7 +398,7 @@ fn render_pie(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
         .paint(move |ctx| {
             ctx.draw(&Points {
                 coords: &remaining,
-                color: Color::DarkGray,
+                color: palette.muted,
             });
             ctx.draw(&Points {
                 coords: &elapsed,
@@ -387,7 +408,7 @@ fn render_pie(frame: &mut Frame, area: Rect, timer: &Timer, accent: Color) {
     frame.render_widget(canvas, area);
 
     if hole.is_some() {
-        draw_fox_in_den(frame, area);
+        draw_fox_in_den(frame, area, palette);
     }
 }
 
@@ -406,8 +427,12 @@ fn fox_reach() -> f64 {
         .enumerate()
         .flat_map(|(r, line)| {
             inked(line).map(move |(c, _)| {
-                let x = (c as f64 * 2.0 - half_w).abs().max(c as f64 * 2.0 + 2.0 - half_w);
-                let y = (r as f64 * 4.0 - half_h).abs().max(r as f64 * 4.0 + 4.0 - half_h);
+                let x = (c as f64 * 2.0 - half_w)
+                    .abs()
+                    .max(c as f64 * 2.0 + 2.0 - half_w);
+                let y = (r as f64 * 4.0 - half_h)
+                    .abs()
+                    .max(r as f64 * 4.0 + 4.0 - half_h);
                 (x * x + y * y).sqrt()
             })
         })
@@ -417,7 +442,7 @@ fn fox_reach() -> f64 {
 /// The menu fox, centered in the ring's hollow. Cells are replaced whole
 /// and blank art cells are skipped — fox and ring never share a cell, so
 /// their colors can't smear.
-fn draw_fox_in_den(frame: &mut Frame, area: Rect) {
+fn draw_fox_in_den(frame: &mut Frame, area: Rect, palette: Palette) {
     let lines: Vec<&str> = FOX_ART.lines().collect();
     let art_h = lines.len() as u16;
     let art_w = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u16;
@@ -432,16 +457,16 @@ fn draw_fox_in_den(frame: &mut Frame, area: Rect) {
         for (c, ch) in inked(line) {
             if let Some(cell) = buf.cell_mut((origin_x + c as u16, origin_y + r as u16)) {
                 cell.set_char(ch);
-                cell.set_fg(FOX);
+                cell.set_fg(palette.fox);
             }
         }
     }
 }
 
-fn render_help(frame: &mut Frame, area: Rect, text: &str) {
+fn render_help(frame: &mut Frame, area: Rect, text: &str, palette: Palette) {
     frame.render_widget(
         Paragraph::new(text)
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(palette.muted))
             .alignment(Alignment::Center),
         area,
     );

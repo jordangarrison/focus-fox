@@ -148,7 +148,10 @@ pub fn print() -> anyhow::Result<()> {
     let records = store::Store::default_dir()
         .map(|dir| store::Store::new(dir).load_recent(now.year()))
         .unwrap_or_default();
-    print!("{}", render_text(&Summary::compute(&records, now.date_naive())));
+    print!(
+        "{}",
+        render_text(&Summary::compute(&records, now.date_naive()))
+    );
     Ok(())
 }
 
@@ -283,7 +286,10 @@ mod tests {
             rec(TODAY, "09:30", Phase::ShortBreak, 5, true),
         ];
         let text = render_text(&Summary::compute(&records, d(TODAY)));
-        assert!(text.contains("Today      1 sessions · 25m"), "text was:\n{text}");
+        assert!(
+            text.contains("Today      1 sessions · 25m"),
+            "text was:\n{text}"
+        );
         assert!(text.contains("Streak     2 days"));
         assert!(text.contains("Lifetime   2 sessions · 50m"));
         assert!(text.contains("Short Break"));

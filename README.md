@@ -69,6 +69,7 @@ fox                             # 25m work / 5m break / 15m long break every 4
 fox -w 45m -b 10m               # custom work and break lengths
 fox --sessions 3                # long break after 3 work sessions
 fox --no-notify                 # skip desktop notifications
+fox --theme light               # force light colors (auto, dark, or light)
 fox stats                       # session history summary (today/week/streak)
 ```
 
@@ -116,7 +117,15 @@ short_break = "5m"
 long_break = "15m"
 sessions_before_long_break = 4
 notify = true
+alert_screen = true
+theme = "auto"
 ```
+
+`theme = "auto"` queries the terminal background when Focus Fox starts and
+selects the matching palette. This follows the terminal rather than the OS
+theme because terminal color schemes can be configured independently. Use
+`"dark"` or `"light"` to override detection. The setting is also available in
+the launch menu and through `--theme`.
 
 ## Development
 

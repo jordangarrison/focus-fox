@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 # TUI (re-exports crossterm, so no separate pin needed)
 ratatui = "0.30"
+terminal-colorsaurus = "1.0"
 
 # CLI
 clap = { version = "4.6", features = ["derive"] }

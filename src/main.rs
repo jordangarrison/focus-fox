@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod notify;
 mod stats;
+mod theme;
 mod timer;
 mod tui;
 

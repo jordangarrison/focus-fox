@@ -110,7 +110,11 @@ impl Timer {
                 if finished {
                     self.completed_work += 1;
                 }
-                if finished && self.completed_work % self.config.sessions_before_long_break == 0 {
+                if finished
+                    && self
+                        .completed_work
+                        .is_multiple_of(self.config.sessions_before_long_break)
+                {
                     Phase::LongBreak
                 } else {
                     Phase::ShortBreak
@@ -140,6 +144,7 @@ mod tests {
             sessions_before_long_break: 2,
             notify: false,
             alert_screen: false,
+            theme: crate::theme::ThemePreference::Auto,
         }
     }
 

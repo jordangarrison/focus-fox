@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use std::time::Duration;
 
+use crate::theme::ThemePreference;
+
 /// Focus Fox - a terminal pomodoro timer
 #[derive(Parser, Debug)]
 #[command(version, about)]
@@ -31,6 +33,10 @@ pub struct Args {
     /// Disable the full-screen alert between sessions
     #[arg(long)]
     pub no_alert: bool,
+
+    /// Color theme (auto detects the terminal background)
+    #[arg(long, value_enum)]
+    pub theme: Option<ThemePreference>,
 }
 
 #[derive(Subcommand, Debug)]

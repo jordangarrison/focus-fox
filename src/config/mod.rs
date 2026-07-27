@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::cli::Args;
+use crate::theme::ThemePreference;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -29,6 +30,9 @@ pub struct Config {
 
     /// Hold on a full-screen alert at phase changes until Enter is pressed
     pub alert_screen: bool,
+
+    /// Color theme, or automatic terminal-background detection
+    pub theme: ThemePreference,
 }
 
 impl Default for Config {
@@ -40,6 +44,7 @@ impl Default for Config {
             sessions_before_long_break: 4,
             notify: true,
             alert_screen: true,
+            theme: ThemePreference::Auto,
         }
     }
 }
@@ -96,6 +101,45 @@ impl Config {
         if args.no_alert {
             self.alert_screen = false;
         }
+        if let Some(theme) = args.theme {
+            self.theme = theme;
+        }
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn older_config_without_theme_uses_auto() {
+        let config: Config = toml::from_str(
+            r#"
+work = "25m"
+short_break = "5m"
+long_break = "15m"
+sessions_before_long_break = 4
+notify = true
+alert_screen = true
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.theme, ThemePreference::Auto);
+    }
+
+    #[test]
+    fn theme_serializes_as_lowercase_name() {
+        let config = Config {
+            theme: ThemePreference::Light,
+            ..Config::default()
+        };
+
+        assert!(
+            toml::to_string(&config)
+                .unwrap()
+                .contains("theme = \"light\"")
+        );
     }
 }
