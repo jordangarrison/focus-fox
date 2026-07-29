@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/jordangarrison/focus-fox/compare/v0.2.0...v0.3.0) (2026-07-29)
+
+
+### Features
+
+* add adaptive terminal themes ([#4](https://github.com/jordangarrison/focus-fox/issues/4)) ([bffa2d8](https://github.com/jordangarrison/focus-fox/commit/bffa2d8f691ac411489c57ce647f8a200ad14d9e))
+* scrub the active timer with h/l or arrow keys ([8e65b5b](https://github.com/jordangarrison/focus-fox/commit/8e65b5bd8a7a3bd3d8f6c4a590723a437154852a))
+
 ## [0.2.0](https://github.com/jordangarrison/focus-fox/compare/v0.1.0...v0.2.0) (2026-07-24)
 
 
