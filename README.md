@@ -125,7 +125,8 @@ theme = "auto"
 selects the matching palette. This follows the terminal rather than the OS
 theme because terminal color schemes can be configured independently. Use
 `"dark"` or `"light"` to override detection. The setting is also available in
-the launch menu and through `--theme`.
+the launch menu and through `--theme`. Terminals without verified true-color
+support automatically use an ANSI palette.
 
 ## Development
 

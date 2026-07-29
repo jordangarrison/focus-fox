@@ -42,11 +42,17 @@ pub struct App {
     /// keeps ticking underneath.
     pub stats_view: Option<Summary>,
     detected_theme: ThemeMode,
+    true_color: bool,
     should_quit: bool,
 }
 
 impl App {
-    pub fn new(config: Config, store: Option<Store>, detected_theme: ThemeMode) -> Self {
+    pub fn new(
+        config: Config,
+        store: Option<Store>,
+        detected_theme: ThemeMode,
+        true_color: bool,
+    ) -> Self {
         Self {
             config,
             screen: Screen::Menu { selected: 0 },
@@ -55,6 +61,7 @@ impl App {
             store,
             stats_view: None,
             detected_theme,
+            true_color,
             should_quit: false,
         }
     }
@@ -64,7 +71,7 @@ impl App {
     }
 
     pub fn palette(&self) -> Palette {
-        self.theme_mode().palette()
+        self.theme_mode().palette(self.true_color)
     }
 
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
@@ -319,7 +326,7 @@ mod tests {
 
     #[test]
     fn menu_adjusts_and_resolves_theme() {
-        let mut app = App::new(Config::default(), None, ThemeMode::Light);
+        let mut app = App::new(Config::default(), None, ThemeMode::Light, false);
         assert_eq!(app.theme_mode(), ThemeMode::Light);
 
         app.adjust(6, 1);
@@ -337,7 +344,7 @@ mod tests {
             alert_screen,
             theme: crate::theme::ThemePreference::Auto,
         };
-        let mut app = App::new(config.clone(), None, ThemeMode::Dark);
+        let mut app = App::new(config.clone(), None, ThemeMode::Dark, false);
         app.screen = Screen::Timer(Timer::new(config));
         app
     }
@@ -541,6 +548,7 @@ mod tests {
             app_on_timer(false).config,
             Some(Store::new(dir.path().to_path_buf())),
             ThemeMode::Dark,
+            false,
         );
         app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
         assert!(app.stats_view.is_some());

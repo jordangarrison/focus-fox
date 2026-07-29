@@ -48,7 +48,8 @@ module layout as sweet-nothings.
   `auto`/`dark`/`light` theme preference; `auto` resolves the terminal
   background once before Ratatui starts.
 - **`src/theme.rs`** - Persisted theme preference, terminal background
-  detection, and semantic light/dark color palettes used by every TUI screen.
+  and true-color capability detection, plus semantic light/dark color palettes
+  with ANSI fallbacks used by every TUI screen.
 - **`src/notify/`** - Best-effort desktop notifications by shelling out to
   `notify-send`; failures never interrupt the timer.
 - **`src/stats/`** - Session history and statistics. Every phase that ends
