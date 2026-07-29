@@ -44,7 +44,12 @@ module layout as sweet-nothings.
   phase naturally on the next tick.
   `app.rs` owns the event loop (100ms tick, keyboard handling), `ui.rs`
   renders the menu, the alert banner, and the big block-digit clock,
-  progress gauge, and session dots.
+  progress gauge, and session dots. The launch menu includes an
+  `auto`/`dark`/`light` theme preference; `auto` resolves the terminal
+  background once before Ratatui starts.
+- **`src/theme.rs`** - Persisted theme preference, terminal background
+  and true-color capability detection, plus semantic light/dark color palettes
+  with ANSI fallbacks used by every TUI screen.
 - **`src/notify/`** - Best-effort desktop notifications by shelling out to
   `notify-send`; failures never interrupt the timer.
 - **`src/stats/`** - Session history and statistics. Every phase that ends
