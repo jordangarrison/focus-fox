@@ -7,6 +7,10 @@ use std::time::Duration;
 use crate::cli::Args;
 use crate::theme::ThemePreference;
 
+pub const MIN_BINAURAL_BEAT_HZ: u16 = 1;
+pub const MAX_BINAURAL_BEAT_HZ: u16 = 100;
+pub const DEFAULT_BINAURAL_BEAT_HZ: u16 = 40;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -31,6 +35,12 @@ pub struct Config {
     /// Hold on a full-screen alert at phase changes until Enter is pressed
     pub alert_screen: bool,
 
+    /// Play binaural tones during work sessions
+    pub binaural_beats: bool,
+
+    /// Frequency difference between left and right tones
+    pub binaural_beat_hz: u16,
+
     /// Color theme, or automatic terminal-background detection
     pub theme: ThemePreference,
 }
@@ -44,6 +54,8 @@ impl Default for Config {
             sessions_before_long_break: 4,
             notify: true,
             alert_screen: true,
+            binaural_beats: false,
+            binaural_beat_hz: DEFAULT_BINAURAL_BEAT_HZ,
             theme: ThemePreference::Auto,
         }
     }
@@ -65,7 +77,9 @@ impl Config {
         }
         let contents = std::fs::read_to_string(&path)
             .with_context(|| format!("reading config at {}", path.display()))?;
-        toml::from_str(&contents).with_context(|| format!("parsing config at {}", path.display()))
+        let config: Self = toml::from_str(&contents)
+            .with_context(|| format!("parsing config at {}", path.display()))?;
+        Ok(config.normalized())
     }
 
     /// Write the current config to the XDG config file, creating it if needed.
@@ -104,6 +118,13 @@ impl Config {
         if let Some(theme) = args.theme {
             self.theme = theme;
         }
+        self.normalized()
+    }
+
+    fn normalized(mut self) -> Self {
+        self.binaural_beat_hz = self
+            .binaural_beat_hz
+            .clamp(MIN_BINAURAL_BEAT_HZ, MAX_BINAURAL_BEAT_HZ);
         self
     }
 }
@@ -127,6 +148,8 @@ alert_screen = true
         .unwrap();
 
         assert_eq!(config.theme, ThemePreference::Auto);
+        assert!(!config.binaural_beats);
+        assert_eq!(config.binaural_beat_hz, DEFAULT_BINAURAL_BEAT_HZ);
     }
 
     #[test]
@@ -141,5 +164,37 @@ alert_screen = true
                 .unwrap()
                 .contains("theme = \"light\"")
         );
+    }
+
+    #[test]
+    fn binaural_settings_round_trip() {
+        let config = Config {
+            binaural_beats: true,
+            binaural_beat_hz: 12,
+            ..Config::default()
+        };
+
+        let encoded = toml::to_string(&config).unwrap();
+        let decoded: Config = toml::from_str(&encoded).unwrap();
+
+        assert!(decoded.binaural_beats);
+        assert_eq!(decoded.binaural_beat_hz, 12);
+    }
+
+    #[test]
+    fn binaural_frequency_is_normalized_to_supported_range() {
+        let config = Config {
+            binaural_beat_hz: 0,
+            ..Config::default()
+        }
+        .normalized();
+        assert_eq!(config.binaural_beat_hz, MIN_BINAURAL_BEAT_HZ);
+
+        let config = Config {
+            binaural_beat_hz: u16::MAX,
+            ..Config::default()
+        }
+        .normalized();
+        assert_eq!(config.binaural_beat_hz, MAX_BINAURAL_BEAT_HZ);
     }
 }

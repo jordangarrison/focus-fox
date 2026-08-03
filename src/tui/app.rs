@@ -4,7 +4,9 @@ use anyhow::Result;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
+use crate::audio::Audio;
 use crate::config::Config;
+use crate::config::{MAX_BINAURAL_BEAT_HZ, MIN_BINAURAL_BEAT_HZ};
 use crate::notify;
 use crate::stats::{Record, Summary, store::Store};
 use crate::theme::{Palette, ThemeMode};
@@ -13,13 +15,15 @@ use crate::timer::{Phase, Timer};
 /// How far one left/right keypress scrubs the running timer.
 const SEEK_STEP: Duration = Duration::from_secs(60);
 
-pub const MENU_ITEMS: [&str; 7] = [
+pub const MENU_ITEMS: [&str; 9] = [
     "Work",
     "Short break",
     "Long break",
     "Sessions",
     "Notifications",
     "Alert screen",
+    "Binaural beats",
+    "Beat difference",
     "Theme",
 ];
 
@@ -44,6 +48,7 @@ pub struct App {
     detected_theme: ThemeMode,
     true_color: bool,
     should_quit: bool,
+    audio: Audio,
 }
 
 impl App {
@@ -63,6 +68,7 @@ impl App {
             detected_theme,
             true_color,
             should_quit: false,
+            audio: Audio::new(),
         }
     }
 
@@ -91,6 +97,7 @@ impl App {
             let now = Instant::now();
             self.advance_clock(now - last_tick);
             last_tick = now;
+            self.sync_audio();
         }
         Ok(())
     }
@@ -227,7 +234,14 @@ impl App {
             }
             4 => c.notify = !c.notify,
             5 => c.alert_screen = !c.alert_screen,
-            6 => c.theme = c.theme.adjust(dir),
+            6 => c.binaural_beats = !c.binaural_beats,
+            7 => {
+                c.binaural_beat_hz = (i64::from(c.binaural_beat_hz) + dir).clamp(
+                    i64::from(MIN_BINAURAL_BEAT_HZ),
+                    i64::from(MAX_BINAURAL_BEAT_HZ),
+                ) as u16;
+            }
+            8 => c.theme = c.theme.adjust(dir),
             _ => {}
         }
         // Menu settings persist between app starts; only surface failures.
@@ -246,6 +260,27 @@ impl App {
             .map(|s| s.load_recent(now.year()))
             .unwrap_or_default();
         self.stats_view = Some(Summary::compute(&records, now.date_naive()));
+    }
+
+    /// Audio follows timer state rather than wall-clock events. This covers
+    /// menu returns, pauses, skips, phase changes, alerts, and every exit path.
+    fn audio_target(&self) -> Option<u16> {
+        if self.should_quit || self.alert.is_some() || !self.config.binaural_beats {
+            return None;
+        }
+        match &self.screen {
+            Screen::Timer(timer) if timer.phase == Phase::Work && !timer.paused => {
+                Some(self.config.binaural_beat_hz)
+            }
+            Screen::Menu { .. } | Screen::Timer(_) => None,
+        }
+    }
+
+    fn sync_audio(&mut self) {
+        let target = self.audio_target();
+        if let Err(err) = self.audio.sync(target) {
+            self.status = Some(format!("audio unavailable: {err}"));
+        }
     }
 }
 
@@ -329,7 +364,7 @@ mod tests {
         let mut app = App::new(Config::default(), None, ThemeMode::Light, false);
         assert_eq!(app.theme_mode(), ThemeMode::Light);
 
-        app.adjust(6, 1);
+        app.adjust(8, 1);
         assert_eq!(app.config.theme, crate::theme::ThemePreference::Dark);
         assert_eq!(app.theme_mode(), ThemeMode::Dark);
     }
@@ -342,6 +377,8 @@ mod tests {
             sessions_before_long_break: 4,
             notify: false,
             alert_screen,
+            binaural_beats: false,
+            binaural_beat_hz: crate::config::DEFAULT_BINAURAL_BEAT_HZ,
             theme: crate::theme::ThemePreference::Auto,
         };
         let mut app = App::new(config.clone(), None, ThemeMode::Dark, false);
@@ -354,6 +391,54 @@ mod tests {
             Screen::Timer(timer) => timer.remaining,
             Screen::Menu { .. } => panic!("expected timer screen"),
         }
+    }
+
+    #[test]
+    fn menu_adjusts_binaural_controls_with_bounds() {
+        let mut app = App::new(Config::default(), None, ThemeMode::Dark, false);
+
+        app.adjust(6, 1);
+        assert!(app.config.binaural_beats);
+
+        app.config.binaural_beat_hz = MAX_BINAURAL_BEAT_HZ;
+        app.adjust(7, 1);
+        assert_eq!(app.config.binaural_beat_hz, MAX_BINAURAL_BEAT_HZ);
+
+        app.config.binaural_beat_hz = MIN_BINAURAL_BEAT_HZ;
+        app.adjust(7, -1);
+        assert_eq!(app.config.binaural_beat_hz, MIN_BINAURAL_BEAT_HZ);
+    }
+
+    #[test]
+    fn audio_target_follows_running_work_only() {
+        let mut app = app_on_timer(false);
+        app.config.binaural_beats = true;
+        assert_eq!(app.audio_target(), Some(40));
+
+        app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), None);
+        app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), Some(40));
+
+        app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), None);
+        app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), Some(40));
+
+        app.handle_key(KeyCode::Char('m'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), None);
+    }
+
+    #[test]
+    fn alert_and_exit_suppress_audio() {
+        let mut app = app_on_timer(true);
+        app.config.binaural_beats = true;
+        app.advance_clock(Duration::from_secs(10));
+        assert!(app.alert.is_some());
+        assert_eq!(app.audio_target(), None);
+
+        app.handle_key(KeyCode::Char('q'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), None);
     }
 
     #[test]

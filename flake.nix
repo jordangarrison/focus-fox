@@ -30,12 +30,15 @@
         # notify-send for phase-change notifications (linux only; notifications
         # are best-effort at runtime, so darwin just goes without)
         runtimeDeps = lib.optionals isLinux [ pkgs.libnotify ];
+        audioDevDeps = lib.optionals isLinux [ pkgs.pkg-config pkgs.alsa-lib ];
 
-        mkFocusFox = rustPlatform: rustPlatform.buildRustPackage {
+        mkFocusFox = rustPlatform: alsaLib: rustPlatform.buildRustPackage {
           pname = "focus-fox";
           inherit version;
           src = ./.;
           cargoLock = { lockFile = ./Cargo.lock; };
+          nativeBuildInputs = lib.optionals isLinux [ pkgs.pkg-config ];
+          buildInputs = lib.optionals isLinux [ alsaLib ];
 
           meta = with lib; {
             description = "Terminal-based pomodoro timer";
@@ -46,11 +49,11 @@
         };
 
         # dynamically linked build for nix users
-        unwrapped = mkFocusFox pkgs.rustPlatform;
+        unwrapped = mkFocusFox pkgs.rustPlatform pkgs.alsa-lib;
 
         # fully static musl build — the portable binary that goes into the
         # deb/rpm/arch packages and the tarball (linux only)
-        static = mkFocusFox pkgs.pkgsStatic.rustPlatform;
+        static = mkFocusFox pkgs.pkgsStatic.rustPlatform pkgs.pkgsStatic.alsa-lib;
 
         # binary shipped in release assets: static on linux, native on darwin
         releaseBin = if isLinux then static else unwrapped;
@@ -99,7 +102,7 @@
       in
       {
         devShells.default = pkgs.mkShell {
-          packages = [ rustToolchain ] ++ runtimeDeps;
+          packages = [ rustToolchain ] ++ runtimeDeps ++ audioDevDeps;
         };
 
         packages = {

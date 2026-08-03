@@ -2,7 +2,8 @@
 
 A terminal-based pomodoro timer. Work sessions, short breaks, and a long
 break every few sessions — with a big clock, a progress ring with a fox
-in the middle, and desktop notifications when phases change.
+in the middle, optional binaural beats during focus, and desktop notifications
+when phases change.
 
 ## Demo
 
@@ -61,6 +62,8 @@ Or add it as a flake input to your NixOS / home-manager config:
 
 Desktop notifications shell out to `notify-send` (Linux), so install
 `libnotify` if you want them; the timer works fine without it.
+Audio uses ALSA on Linux and CoreAudio on macOS. Nix and packaged builds include
+the needed platform support.
 
 ## Usage
 
@@ -76,7 +79,8 @@ fox stats                       # session history summary (today/week/streak)
 The binary is installed as both `fox` and `focus-fox` — same program.
 
 Launch opens a configuration menu; tweak values there (or skip straight
-past it with Enter) and start the timer.
+past it with Enter) and start the timer. Binaural beats and their frequency
+difference are selectable there.
 
 ### Keys
 
@@ -118,8 +122,17 @@ long_break = "15m"
 sessions_before_long_break = 4
 notify = true
 alert_screen = true
+binaural_beats = false
+binaural_beat_hz = 40
 theme = "auto"
 ```
+
+Set `binaural_beats = true` in the menu or config file to play low-volume
+stereo tones during unpaused Work phases. Playback stops during breaks, phase
+alerts, menu visits, and exit. `binaural_beat_hz` controls the difference
+between the left 220 Hz carrier and the right tone, from 1–100 Hz; default is
+40 Hz. Headphones are required for the binaural effect. Audio-device failures
+are non-fatal and appear in the status line.
 
 `theme = "auto"` queries the terminal background when Focus Fox starts and
 selects the matching palette. This follows the terminal rather than the OS
@@ -131,7 +144,7 @@ support automatically use an ANSI palette.
 ## Development
 
 ```bash
-nix develop     # dev shell with rust toolchain + libnotify
+nix develop     # dev shell with rust toolchain + libnotify + ALSA on Linux
 cargo run
 cargo test
 nix build       # release build with notify-send wrapped onto PATH
