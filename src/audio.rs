@@ -7,9 +7,9 @@ use rodio::Player;
 use rodio::source::Source;
 use rodio::stream::{DeviceSinkBuilder, MixerDeviceSink};
 
+use crate::config::ToneSettings;
+
 const SAMPLE_RATE: u32 = 48_000;
-const CARRIER_HZ: f64 = 220.0;
-const TONE_AMPLITUDE: f64 = 0.08;
 const FADE_IN: Duration = Duration::from_millis(250);
 
 /// Owns audio-device resources. Dropping the player and device sink stops
@@ -17,7 +17,9 @@ const FADE_IN: Duration = Duration::from_millis(250);
 pub struct Audio {
     player: Option<Player>,
     device: Option<MixerDeviceSink>,
-    requested_beat_hz: Option<u16>,
+    requested_settings: Option<ToneSettings>,
+    #[cfg(test)]
+    fail_next_sync: bool,
 }
 
 impl Audio {
@@ -25,30 +27,40 @@ impl Audio {
         Self {
             player: None,
             device: None,
-            requested_beat_hz: None,
+            requested_settings: None,
+            #[cfg(test)]
+            fail_next_sync: false,
         }
     }
 
-    /// Match playback to the requested beat frequency. `None` fully closes
+    /// Match playback to requested tone settings. `None` fully closes
     /// the output device. Failed requests are remembered until state changes,
     /// avoiding a device-open attempt on every 100 ms TUI tick.
-    pub fn sync(&mut self, beat_hz: Option<u16>) -> Result<()> {
-        if beat_hz == self.requested_beat_hz {
+    pub fn sync(&mut self, settings: Option<ToneSettings>) -> Result<()> {
+        if settings == self.requested_settings {
             return Ok(());
         }
 
         self.stop();
-        self.requested_beat_hz = beat_hz;
+        self.requested_settings = settings;
 
-        let Some(beat_hz) = beat_hz else {
+        let Some(settings) = settings else {
             return Ok(());
         };
+
+        #[cfg(test)]
+        if std::mem::take(&mut self.fail_next_sync) {
+            anyhow::bail!("test audio failure");
+        }
 
         let mut device =
             DeviceSinkBuilder::open_default_sink().context("opening the default audio output")?;
         device.log_on_drop(false);
         let player = Player::connect_new(device.mixer());
-        player.append(BinauralSource::new(beat_hz).fade_in(FADE_IN));
+        // Keep tone gain on its own player so future music playback can have
+        // an independent volume control and player.
+        player.set_volume(f32::from(settings.volume_percent) / 100.0);
+        player.append(BinauralSource::new(settings).fade_in(FADE_IN));
 
         self.player = Some(player);
         self.device = Some(device);
@@ -58,7 +70,12 @@ impl Audio {
     fn stop(&mut self) {
         self.player = None;
         self.device = None;
-        self.requested_beat_hz = None;
+        self.requested_settings = None;
+    }
+
+    #[cfg(test)]
+    pub fn fail_next_sync(&mut self) {
+        self.fail_next_sync = true;
     }
 }
 
@@ -80,13 +97,13 @@ struct BinauralSource {
 }
 
 impl BinauralSource {
-    fn new(beat_hz: u16) -> Self {
+    fn new(settings: ToneSettings) -> Self {
         Self {
             channel: 0,
             left_phase: 0.0,
             right_phase: 0.0,
-            left_step: TAU * CARRIER_HZ / SAMPLE_RATE as f64,
-            right_step: TAU * (CARRIER_HZ + f64::from(beat_hz)) / SAMPLE_RATE as f64,
+            left_step: TAU * f64::from(settings.base_hz) / SAMPLE_RATE as f64,
+            right_step: TAU * f64::from(settings.base_hz + settings.beat_hz) / SAMPLE_RATE as f64,
         }
     }
 
@@ -114,7 +131,7 @@ impl Iterator for BinauralSource {
             self.channel = 0;
             sample
         };
-        Some((sample * TONE_AMPLITUDE) as f32)
+        Some(sample as f32)
     }
 }
 
@@ -141,25 +158,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn source_is_stereo_with_expected_frequency_difference() {
-        let source = BinauralSource::new(40);
-        let (left, right) = source.frequencies();
-
-        assert_eq!(source.channels().get(), 2);
-        assert_eq!(source.sample_rate().get(), SAMPLE_RATE);
-        assert!((left - CARRIER_HZ).abs() < f64::EPSILON);
-        assert!((right - left - 40.0).abs() < f64::EPSILON);
+    fn source_is_stereo_with_expected_frequencies() {
+        for settings in [
+            ToneSettings {
+                base_hz: 220,
+                beat_hz: 18,
+                volume_percent: 8,
+            },
+            ToneSettings {
+                base_hz: 320,
+                beat_hz: 40,
+                volume_percent: 8,
+            },
+            ToneSettings {
+                base_hz: 470,
+                beat_hz: 13,
+                volume_percent: 37,
+            },
+        ] {
+            let source = BinauralSource::new(settings);
+            let (left, right) = source.frequencies();
+            assert_eq!(source.channels().get(), 2);
+            assert_eq!(source.sample_rate().get(), SAMPLE_RATE);
+            assert!((left - f64::from(settings.base_hz)).abs() < 1e-10);
+            assert!((right - left - f64::from(settings.beat_hz)).abs() < 1e-10);
+        }
     }
 
     #[test]
     fn generated_samples_stay_at_safe_amplitude() {
-        let mut source = BinauralSource::new(40);
+        let mut source = BinauralSource::new(ToneSettings {
+            base_hz: 220,
+            beat_hz: 40,
+            volume_percent: 100,
+        });
 
         assert!(
             source
                 .by_ref()
                 .take(SAMPLE_RATE as usize * 2)
-                .all(|sample| sample.abs() <= TONE_AMPLITUDE as f32)
+                .all(|sample| sample.abs() <= 1.0)
         );
     }
 }

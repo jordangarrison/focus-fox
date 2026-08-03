@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::canvas::{Canvas, Points};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use super::app::{App, MENU_ITEMS, Screen};
+use super::app::{AUDIO_MENU_ITEMS, App, MENU_ITEMS, Screen};
 use crate::stats::{self, Summary};
 use crate::theme::Palette;
 use crate::timer::{Phase, Timer};
@@ -17,6 +17,9 @@ pub fn render(frame: &mut Frame, app: &App) {
         (Screen::Timer(timer), Some(phase)) => render_alert(frame, app, timer, phase, palette),
         (Screen::Timer(timer), None) => render_timer(frame, app, timer, palette),
         (Screen::Menu { selected }, _) => render_menu(frame, app, *selected, palette),
+        (Screen::AudioMenu { selected, preview }, _) => {
+            render_audio_menu(frame, app, *selected, *preview, palette)
+        }
     }
     if let Some(summary) = &app.stats_view {
         render_stats(frame, summary, palette);
@@ -95,8 +98,7 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize, palette: Palette) 
         c.sessions_before_long_break.to_string(),
         if c.notify { "on" } else { "off" }.to_string(),
         if c.alert_screen { "on" } else { "off" }.to_string(),
-        if c.binaural_beats { "on" } else { "off" }.to_string(),
-        format!("{} Hz", c.binaural_beat_hz),
+        audio_detail(app),
         theme,
     ];
 
@@ -113,7 +115,7 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize, palette: Palette) 
             } else {
                 Style::default()
             };
-            Line::styled(format!("{marker}{label:<15} ◂ {value:>11} ▸"), style)
+            Line::styled(format!("{marker}{label:<15} ◂ {value} ▸"), style)
         })
         .collect();
     lines.push(Line::raw(""));
@@ -129,7 +131,97 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize, palette: Palette) 
     render_help(
         frame,
         rows[6],
-        "↑↓ select · ←→ adjust · enter start · t stats · q quit · beats need headphones",
+        "↑↓ select · ←→ adjust · enter start/open · a audio · t stats · q quit",
+        palette,
+    );
+}
+
+fn audio_detail(app: &App) -> String {
+    let settings = app.config.tone_settings();
+    let state = if app.config.binaural_beats {
+        "on"
+    } else {
+        "off"
+    };
+    format!(
+        "{state} · {} · {}/{} Hz · {} Hz · {}%",
+        app.config.binaural_preset,
+        settings.base_hz,
+        settings.base_hz + settings.beat_hz,
+        settings.beat_hz,
+        settings.volume_percent,
+    )
+}
+
+fn render_audio_menu(
+    frame: &mut Frame,
+    app: &App,
+    selected: usize,
+    preview: bool,
+    palette: Palette,
+) {
+    let inner = frame_block(frame, palette.fox, " 🦊 Audio Settings ");
+    let settings = app.config.tone_settings();
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Fill(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(AUDIO_MENU_ITEMS.len() as u16),
+            Constraint::Fill(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(format!(
+            "{}/{} Hz · {} Hz difference · {}% volume{}",
+            settings.base_hz,
+            settings.base_hz + settings.beat_hz,
+            settings.beat_hz,
+            settings.volume_percent,
+            if preview { " · previewing" } else { "" },
+        ))
+        .style(Style::default().fg(if preview { palette.work } else { palette.muted }))
+        .alignment(Alignment::Center),
+        rows[1],
+    );
+
+    let values = [
+        if app.config.binaural_beats {
+            "on".to_string()
+        } else {
+            "off".to_string()
+        },
+        app.config.binaural_preset.to_string(),
+        format!("{} Hz", settings.base_hz),
+        format!("{} Hz", settings.beat_hz),
+        format!("{}%", settings.volume_percent),
+    ];
+    let lines: Vec<Line> = AUDIO_MENU_ITEMS
+        .iter()
+        .zip(values)
+        .enumerate()
+        .map(|(index, (label, value))| {
+            let marker = if index == selected { "▸ " } else { "  " };
+            let style = if index == selected {
+                Style::default()
+                    .fg(palette.fox)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            Line::styled(format!("{marker}{label:<16} ◂ {value} ▸"), style)
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), rows[3]);
+    render_status(frame, rows[5], app.status.as_deref(), palette);
+    render_help(
+        frame,
+        rows[6],
+        "↑↓ select · ←→ adjust · p preview · enter/esc/m back · use headphones safely",
         palette,
     );
 }

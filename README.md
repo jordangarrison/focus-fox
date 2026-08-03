@@ -79,8 +79,8 @@ fox stats                       # session history summary (today/week/streak)
 The binary is installed as both `fox` and `focus-fox` — same program.
 
 Launch opens a configuration menu; tweak values there (or skip straight
-past it with Enter) and start the timer. Binaural beats and their frequency
-difference are selectable there.
+past it with Enter) and start the timer. Binaural tone presets, Custom tone
+controls, volume, and preview live in the Audio settings submenu.
 
 ### Keys
 
@@ -90,10 +90,23 @@ Menu (launch screen):
 |---------------|-------------------------------|
 | `↑`/`↓`, `k`/`j` | select setting             |
 | `←`/`→`, `h`/`l` | adjust value               |
-| `Enter`       | start the timer               |
+| `Enter`       | start timer, or open Audio settings |
+| `a`           | open Audio settings           |
 | `q`/`Esc`     | quit                          |
 
 Menu changes are saved automatically and persist between app starts.
+
+Audio settings:
+
+| Key           | Action                        |
+|---------------|-------------------------------|
+| `↑`/`↓`, `k`/`j` | select setting             |
+| `←`/`→`, `h`/`l` | adjust value               |
+| `p`           | toggle live preview           |
+| `Enter`/`Esc`/`m` | return to launch menu      |
+
+Preview works even when binaural playback is disabled. It stops when you leave
+Audio settings or quit.
 
 Timer:
 
@@ -123,16 +136,41 @@ sessions_before_long_break = 4
 notify = true
 alert_screen = true
 binaural_beats = false
+binaural_preset = "gamma_experiment"
+binaural_base_hz = 220
 binaural_beat_hz = 40
+binaural_volume_percent = 8
 theme = "auto"
 ```
 
-Set `binaural_beats = true` in the menu or config file to play low-volume
-stereo tones during unpaused Work phases. Playback stops during breaks, phase
-alerts, menu visits, and exit. `binaural_beat_hz` controls the difference
-between the left 220 Hz carrier and the right tone, from 1–100 Hz; default is
-40 Hz. Headphones are required for the binaural effect. Audio-device failures
-are non-fatal and appear in the status line.
+Set `binaural_beats = true` in the menu or config file to play stereo tones
+during unpaused Work phases. Playback stops during breaks, pauses, phase
+alerts, menu visits, and exit. Default selection is disabled with the Gamma
+experiment preset.
+
+Built-in listening modes:
+
+| Preset | Left / right tones | Difference |
+|--------|--------------------|------------|
+| Active focus | 220 / 238 Hz | 18 Hz |
+| Gamma experiment | 220 / 260 Hz | 40 Hz |
+| Research gamma | 320 / 360 Hz | 40 Hz |
+| Calm concentration | 220 / 230 Hz | 10 Hz |
+| Meditative | 220 / 226 Hz | 6 Hz |
+| Wind-down | 160 / 163 Hz | 3 Hz |
+| Custom | 100–1000 Hz base | 1–100 Hz |
+
+Preset names are listening modes, not promises of cognitive or health effects.
+Custom base tone changes in 10 Hz steps; beat difference changes in 1 Hz steps.
+One Custom slot persists while you try built-in presets. Editing a built-in base
+or difference copies that preset into Custom before changing it. Beat volume is
+linear gain from 1–100% and defaults to 8%.
+
+Headphones are required for the binaural effect. Start at a safe volume and
+stop listening if sound becomes uncomfortable. Audio-device failures are
+non-fatal and appear in the status line. Older configs migrate automatically:
+legacy 40 Hz uses Gamma experiment, while other differences become Custom with
+a 220 Hz base.
 
 `theme = "auto"` queries the terminal background when Focus Fox starts and
 selects the matching palette. This follows the terminal rather than the OS

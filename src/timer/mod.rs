@@ -144,9 +144,7 @@ mod tests {
             sessions_before_long_break: 2,
             notify: false,
             alert_screen: false,
-            binaural_beats: false,
-            binaural_beat_hz: crate::config::DEFAULT_BINAURAL_BEAT_HZ,
-            theme: crate::theme::ThemePreference::Auto,
+            ..Config::default()
         }
     }
 
