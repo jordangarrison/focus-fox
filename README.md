@@ -118,12 +118,14 @@ Timer:
 | `s`         | skip to next phase          |
 | `r`         | restart this phase          |
 | `←`/`→`, `h`/`l` | jump back / forward 1m |
+| `a`         | toggle binaural audio       |
 | `t`         | stats overlay (`t`/`Esc` closes) |
 | `m`         | back to the menu            |
 | `q`/`Esc`   | quit                        |
 
 Jumping forward past the end finishes the phase as if it ran out
-naturally; jumping back stops at the start of the phase.
+naturally; jumping back stops at the start of the phase. Toggling audio
+with `a` persists to the config file, just like changing it in the menu.
 
 ## Configuration
 
@@ -145,8 +147,8 @@ binaural_volume_percent = 8
 theme = "auto"
 ```
 
-Set `binaural_beats = true` in the menu or config file to play stereo tones
-during unpaused Work phases. Playback stops during breaks, pauses, phase
+Set `binaural_beats = true` in the menu or config file (or press `a` on the
+timer screen) to play stereo tones during unpaused Work phases. Playback stops during breaks, pauses, phase
 alerts, menu visits, and exit. Default selection is disabled with the Gamma
 experiment preset.
 

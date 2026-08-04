@@ -41,7 +41,8 @@ module layout as sweet-nothings.
   timer until Enter is pressed (`App.alert`); manual skips bypass it.
   On the timer screen, `←`/`→` (or `h`/`l`) scrub the clock ±1 minute
   (`Timer::seek_back`/`seek_forward`); forward past the end finishes the
-  phase naturally on the next tick.
+  phase naturally on the next tick, and `a` toggles binaural audio,
+  persisting the setting to the config file like a menu adjustment.
   `app.rs` owns the event loop (100ms tick, keyboard handling), `ui.rs`
   renders the menu, the alert banner, and the big block-digit clock,
   progress gauge, and session dots. The launch menu includes an

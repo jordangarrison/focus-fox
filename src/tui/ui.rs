@@ -275,7 +275,7 @@ fn render_timer(frame: &mut Frame, app: &App, timer: &Timer, palette: Palette) {
     render_help(
         frame,
         rows[7],
-        "space pause · s skip · r reset · h/l ±1m · t stats · m menu · q quit",
+        "space pause · s skip · r reset · h/l ±1m · a audio · t stats · m menu · q quit",
         palette,
     );
 }
