@@ -236,6 +236,18 @@ impl App {
                 KeyCode::Char('r') => timer.reset(),
                 KeyCode::Right | KeyCode::Char('l') => timer.seek_forward(SEEK_STEP),
                 KeyCode::Left | KeyCode::Char('h') => timer.seek_back(SEEK_STEP),
+                KeyCode::Char('a') => {
+                    self.config.binaural_beats = !self.config.binaural_beats;
+                    self.status = Some(
+                        if self.config.binaural_beats {
+                            "audio on"
+                        } else {
+                            "audio off"
+                        }
+                        .to_string(),
+                    );
+                    self.save_config();
+                }
                 KeyCode::Char('m') => self.screen = Screen::Menu { selected: 0 },
                 _ => {}
             },
@@ -556,6 +568,22 @@ mod tests {
         assert_eq!(app.audio_target(), Some(settings));
 
         app.handle_key(KeyCode::Char('m'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), None);
+    }
+
+    #[test]
+    fn a_toggles_audio_from_the_timer_screen() {
+        let mut app = app_on_timer(false);
+        assert!(!app.config.binaural_beats);
+
+        app.handle_key(KeyCode::Char('a'), KeyModifiers::NONE);
+        assert!(app.config.binaural_beats);
+        assert_eq!(app.status.as_deref(), Some("audio on"));
+        assert_eq!(app.audio_target(), Some(app.config.tone_settings()));
+
+        app.handle_key(KeyCode::Char('a'), KeyModifiers::NONE);
+        assert!(!app.config.binaural_beats);
+        assert_eq!(app.status.as_deref(), Some("audio off"));
         assert_eq!(app.audio_target(), None);
     }
 
