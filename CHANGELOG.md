@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/jordangarrison/focus-fox/compare/v0.3.0...v0.4.0) (2026-08-04)
+
+
+### Features
+
+* add binaural tone presets ([#5](https://github.com/jordangarrison/focus-fox/issues/5)) ([0a621ca](https://github.com/jordangarrison/focus-fox/commit/0a621cac6d63a3c8d4db0fe4657b442bc97350a7))
+
 ## [0.3.0](https://github.com/jordangarrison/focus-fox/compare/v0.2.0...v0.3.0) (2026-07-29)
 
 
