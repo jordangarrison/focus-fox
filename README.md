@@ -62,8 +62,10 @@ Or add it as a flake input to your NixOS / home-manager config:
 
 Desktop notifications shell out to `notify-send` (Linux), so install
 `libnotify` if you want them; the timer works fine without it.
-Audio uses ALSA on Linux and CoreAudio on macOS. Nix and packaged builds include
-the needed platform support.
+Audio uses ALSA on Linux and CoreAudio on macOS. Debian, RPM, and Arch packages
+declare their distribution's ALSA configuration package. When installing the
+standalone Linux tarball, make sure ALSA runtime data is installed (normally
+provided by `libasound2-data` or `alsa-lib`).
 
 ## Usage
 
