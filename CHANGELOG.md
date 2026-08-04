@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/jordangarrison/focus-fox/compare/v0.4.0...v0.5.0) (2026-08-04)
+
+
+### Features
+
+* toggle binaural audio from the timer screen ([#8](https://github.com/jordangarrison/focus-fox/issues/8)) ([1fdf6cb](https://github.com/jordangarrison/focus-fox/commit/1fdf6cbc8b33b3db4c377e4f0cef7e35b8b0aea9))
+
 ## [0.4.0](https://github.com/jordangarrison/focus-fox/compare/v0.3.0...v0.4.0) (2026-08-04)
 
 
