@@ -4,7 +4,12 @@ use anyhow::Result;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
-use crate::config::Config;
+use crate::audio::Audio;
+use crate::config::{
+    BINAURAL_BASE_STEP_HZ, Config, MAX_BINAURAL_BASE_HZ, MAX_BINAURAL_BEAT_HZ,
+    MAX_BINAURAL_VOLUME_PERCENT, MIN_BINAURAL_BASE_HZ, MIN_BINAURAL_BEAT_HZ,
+    MIN_BINAURAL_VOLUME_PERCENT, ToneSettings,
+};
 use crate::notify;
 use crate::stats::{Record, Summary, store::Store};
 use crate::theme::{Palette, ThemeMode};
@@ -13,18 +18,28 @@ use crate::timer::{Phase, Timer};
 /// How far one left/right keypress scrubs the running timer.
 const SEEK_STEP: Duration = Duration::from_secs(60);
 
-pub const MENU_ITEMS: [&str; 7] = [
+pub const MENU_ITEMS: [&str; 8] = [
     "Work",
     "Short break",
     "Long break",
     "Sessions",
     "Notifications",
     "Alert screen",
+    "Audio settings",
     "Theme",
+];
+
+pub const AUDIO_MENU_ITEMS: [&str; 5] = [
+    "Enabled",
+    "Tone preset",
+    "Base tone",
+    "Beat difference",
+    "Beat volume",
 ];
 
 pub enum Screen {
     Menu { selected: usize },
+    AudioMenu { selected: usize, preview: bool },
     Timer(Timer),
 }
 
@@ -44,6 +59,7 @@ pub struct App {
     detected_theme: ThemeMode,
     true_color: bool,
     should_quit: bool,
+    audio: Audio,
 }
 
 impl App {
@@ -63,6 +79,7 @@ impl App {
             detected_theme,
             true_color,
             should_quit: false,
+            audio: Audio::new(),
         }
     }
 
@@ -91,6 +108,7 @@ impl App {
             let now = Instant::now();
             self.advance_clock(now - last_tick);
             last_tick = now;
+            self.sync_audio();
         }
         Ok(())
     }
@@ -136,7 +154,11 @@ impl App {
             return;
         }
         if code == KeyCode::Esc {
-            self.should_quit = true;
+            if matches!(self.screen, Screen::AudioMenu { .. }) {
+                self.screen = Screen::Menu { selected: 6 };
+            } else {
+                self.should_quit = true;
+            }
             return;
         }
         if self.alert.is_some() {
@@ -164,6 +186,10 @@ impl App {
             }
             return;
         }
+        if matches!(self.screen, Screen::AudioMenu { .. }) {
+            self.handle_audio_menu_key(code);
+            return;
+        }
         if code == KeyCode::Char('t') {
             self.open_stats();
             return;
@@ -181,8 +207,13 @@ impl App {
                     KeyCode::Left | KeyCode::Char('h') => self.adjust(selected, -1),
                     KeyCode::Right | KeyCode::Char('l') => self.adjust(selected, 1),
                     KeyCode::Enter => {
-                        self.screen = Screen::Timer(Timer::new(self.config.clone()));
+                        if selected == 6 {
+                            self.open_audio_menu();
+                        } else {
+                            self.screen = Screen::Timer(Timer::new(self.config.clone()));
+                        }
                     }
+                    KeyCode::Char('a') => self.open_audio_menu(),
                     _ => {}
                 }
             }
@@ -208,6 +239,49 @@ impl App {
                 KeyCode::Char('m') => self.screen = Screen::Menu { selected: 0 },
                 _ => {}
             },
+            Screen::AudioMenu { .. } => unreachable!("audio menu handled above"),
+        }
+    }
+
+    fn open_audio_menu(&mut self) {
+        self.screen = Screen::AudioMenu {
+            selected: 0,
+            preview: false,
+        };
+    }
+
+    fn handle_audio_menu_key(&mut self, code: KeyCode) {
+        let (selected, preview) = match &self.screen {
+            Screen::AudioMenu { selected, preview } => (*selected, *preview),
+            _ => return,
+        };
+        match code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.screen = Screen::AudioMenu {
+                    selected: selected
+                        .checked_sub(1)
+                        .unwrap_or(AUDIO_MENU_ITEMS.len() - 1),
+                    preview,
+                };
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.screen = Screen::AudioMenu {
+                    selected: (selected + 1) % AUDIO_MENU_ITEMS.len(),
+                    preview,
+                };
+            }
+            KeyCode::Left | KeyCode::Char('h') => self.adjust_audio(selected, -1),
+            KeyCode::Right | KeyCode::Char('l') => self.adjust_audio(selected, 1),
+            KeyCode::Char('p') => {
+                self.screen = Screen::AudioMenu {
+                    selected,
+                    preview: !preview,
+                };
+            }
+            KeyCode::Enter | KeyCode::Esc | KeyCode::Char('m') => {
+                self.screen = Screen::Menu { selected: 6 };
+            }
+            _ => {}
         }
     }
 
@@ -227,9 +301,50 @@ impl App {
             }
             4 => c.notify = !c.notify,
             5 => c.alert_screen = !c.alert_screen,
-            6 => c.theme = c.theme.adjust(dir),
+            6 => c.binaural_beats = !c.binaural_beats,
+            7 => c.theme = c.theme.adjust(dir),
             _ => {}
         }
+        self.save_config();
+    }
+
+    fn adjust_audio(&mut self, selected: usize, dir: i64) {
+        let c = &mut self.config;
+        match selected {
+            0 => c.binaural_beats = !c.binaural_beats,
+            1 => c.binaural_preset = c.binaural_preset.adjust(dir),
+            2 => {
+                c.select_custom_from_active();
+                c.binaural_base_hz =
+                    (i64::from(c.binaural_base_hz) + dir * i64::from(BINAURAL_BASE_STEP_HZ)).clamp(
+                        i64::from(MIN_BINAURAL_BASE_HZ),
+                        i64::from(MAX_BINAURAL_BASE_HZ),
+                    ) as u16;
+            }
+            3 => {
+                c.select_custom_from_active();
+                c.binaural_beat_hz = (i64::from(c.binaural_beat_hz) + dir).clamp(
+                    i64::from(MIN_BINAURAL_BEAT_HZ),
+                    i64::from(MAX_BINAURAL_BEAT_HZ),
+                ) as u16;
+            }
+            4 => {
+                c.binaural_volume_percent = (i64::from(c.binaural_volume_percent) + dir).clamp(
+                    i64::from(MIN_BINAURAL_VOLUME_PERCENT),
+                    i64::from(MAX_BINAURAL_VOLUME_PERCENT),
+                ) as u8;
+            }
+            _ => {}
+        }
+        self.save_config();
+    }
+
+    fn save_config(&mut self) {
+        // Unit tests exercise menu controls and must not touch the user's XDG config.
+        if cfg!(test) {
+            return;
+        }
+
         // Menu settings persist between app starts; only surface failures.
         if let Err(err) = self.config.save() {
             self.status = Some(format!("save failed: {err}"));
@@ -246,6 +361,33 @@ impl App {
             .map(|s| s.load_recent(now.year()))
             .unwrap_or_default();
         self.stats_view = Some(Summary::compute(&records, now.date_naive()));
+    }
+
+    /// Audio follows timer state rather than wall-clock events. This covers
+    /// menu returns, pauses, skips, phase changes, alerts, and every exit path.
+    fn audio_target(&self) -> Option<ToneSettings> {
+        if self.should_quit || self.alert.is_some() {
+            return None;
+        }
+        if matches!(self.screen, Screen::AudioMenu { preview: true, .. }) {
+            return Some(self.config.tone_settings());
+        }
+        if !self.config.binaural_beats {
+            return None;
+        }
+        match &self.screen {
+            Screen::Timer(timer) if timer.phase == Phase::Work && !timer.paused => {
+                Some(self.config.tone_settings())
+            }
+            Screen::Menu { .. } | Screen::AudioMenu { .. } | Screen::Timer(_) => None,
+        }
+    }
+
+    fn sync_audio(&mut self) {
+        let target = self.audio_target();
+        if let Err(err) = self.audio.sync(target) {
+            self.status = Some(format!("audio unavailable: {err}"));
+        }
     }
 }
 
@@ -329,7 +471,7 @@ mod tests {
         let mut app = App::new(Config::default(), None, ThemeMode::Light, false);
         assert_eq!(app.theme_mode(), ThemeMode::Light);
 
-        app.adjust(6, 1);
+        app.adjust(7, 1);
         assert_eq!(app.config.theme, crate::theme::ThemePreference::Dark);
         assert_eq!(app.theme_mode(), ThemeMode::Dark);
     }
@@ -342,7 +484,7 @@ mod tests {
             sessions_before_long_break: 4,
             notify: false,
             alert_screen,
-            theme: crate::theme::ThemePreference::Auto,
+            ..Config::default()
         };
         let mut app = App::new(config.clone(), None, ThemeMode::Dark, false);
         app.screen = Screen::Timer(Timer::new(config));
@@ -352,8 +494,110 @@ mod tests {
     fn remaining(app: &App) -> Duration {
         match &app.screen {
             Screen::Timer(timer) => timer.remaining,
-            Screen::Menu { .. } => panic!("expected timer screen"),
+            Screen::Menu { .. } | Screen::AudioMenu { .. } => panic!("expected timer screen"),
         }
+    }
+
+    #[test]
+    fn launch_menu_toggles_audio_and_opens_submenu() {
+        let mut app = App::new(Config::default(), None, ThemeMode::Dark, false);
+
+        app.adjust(6, 1);
+        assert!(app.config.binaural_beats);
+
+        app.handle_key(KeyCode::Char('a'), KeyModifiers::NONE);
+        assert!(matches!(
+            app.screen,
+            Screen::AudioMenu {
+                selected: 0,
+                preview: false
+            }
+        ));
+    }
+
+    #[test]
+    fn audio_menu_controls_have_bounds_and_builtin_edit_becomes_custom() {
+        let mut app = App::new(Config::default(), None, ThemeMode::Dark, false);
+
+        app.config.binaural_beat_hz = MAX_BINAURAL_BEAT_HZ;
+        app.config.binaural_preset = crate::config::BinauralPreset::Custom;
+        app.adjust_audio(3, 1);
+        assert_eq!(app.config.binaural_beat_hz, MAX_BINAURAL_BEAT_HZ);
+
+        app.config.binaural_beat_hz = MIN_BINAURAL_BEAT_HZ;
+        app.adjust_audio(3, -1);
+        assert_eq!(app.config.binaural_beat_hz, MIN_BINAURAL_BEAT_HZ);
+
+        app.config.binaural_preset = crate::config::BinauralPreset::ResearchGamma;
+        app.adjust_audio(2, 1);
+        assert_eq!(
+            app.config.binaural_preset,
+            crate::config::BinauralPreset::Custom
+        );
+        assert_eq!(app.config.binaural_base_hz, 330);
+        assert_eq!(app.config.binaural_beat_hz, 40);
+    }
+
+    #[test]
+    fn audio_target_follows_running_work_only() {
+        let mut app = app_on_timer(false);
+        app.config.binaural_beats = true;
+        let settings = app.config.tone_settings();
+        assert_eq!(app.audio_target(), Some(settings));
+
+        app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), None);
+        app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), Some(settings));
+
+        app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), None);
+        app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), Some(settings));
+
+        app.handle_key(KeyCode::Char('m'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), None);
+    }
+
+    #[test]
+    fn alert_and_exit_suppress_audio() {
+        let mut app = app_on_timer(true);
+        app.config.binaural_beats = true;
+        app.advance_clock(Duration::from_secs(10));
+        assert!(app.alert.is_some());
+        assert_eq!(app.audio_target(), None);
+
+        app.handle_key(KeyCode::Char('q'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), None);
+    }
+
+    #[test]
+    fn preview_works_while_disabled_and_stops_when_submenu_closes() {
+        let mut app = App::new(Config::default(), None, ThemeMode::Dark, false);
+        assert!(!app.config.binaural_beats);
+        app.handle_key(KeyCode::Char('a'), KeyModifiers::NONE);
+        app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target(), Some(app.config.tone_settings()));
+
+        app.config.binaural_volume_percent = 31;
+        assert_eq!(app.audio_target().unwrap().volume_percent, 31);
+
+        app.handle_key(KeyCode::Esc, KeyModifiers::NONE);
+        assert!(matches!(app.screen, Screen::Menu { selected: 6 }));
+        assert_eq!(app.audio_target(), None);
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn audio_failure_surfaces_in_status_line() {
+        let mut app = app_on_timer(false);
+        app.config.binaural_beats = true;
+        app.audio.fail_next_sync();
+        app.sync_audio();
+        assert_eq!(
+            app.status.as_deref(),
+            Some("audio unavailable: test audio failure")
+        );
     }
 
     #[test]

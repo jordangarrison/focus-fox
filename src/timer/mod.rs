@@ -144,7 +144,7 @@ mod tests {
             sessions_before_long_break: 2,
             notify: false,
             alert_screen: false,
-            theme: crate::theme::ThemePreference::Auto,
+            ..Config::default()
         }
     }
 

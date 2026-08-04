@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::canvas::{Canvas, Points};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use super::app::{App, MENU_ITEMS, Screen};
+use super::app::{AUDIO_MENU_ITEMS, App, MENU_ITEMS, Screen};
 use crate::stats::{self, Summary};
 use crate::theme::Palette;
 use crate::timer::{Phase, Timer};
@@ -14,9 +14,12 @@ use crate::timer::{Phase, Timer};
 pub fn render(frame: &mut Frame, app: &App) {
     let palette = app.palette();
     match (&app.screen, app.alert) {
-        (Screen::Timer(timer), Some(phase)) => render_alert(frame, timer, phase, palette),
-        (Screen::Timer(timer), None) => render_timer(frame, timer, palette),
+        (Screen::Timer(timer), Some(phase)) => render_alert(frame, app, timer, phase, palette),
+        (Screen::Timer(timer), None) => render_timer(frame, app, timer, palette),
         (Screen::Menu { selected }, _) => render_menu(frame, app, *selected, palette),
+        (Screen::AudioMenu { selected, preview }, _) => {
+            render_audio_menu(frame, app, *selected, *preview, palette)
+        }
     }
     if let Some(summary) = &app.stats_view {
         render_stats(frame, summary, palette);
@@ -32,6 +35,17 @@ fn frame_block(frame: &mut Frame, accent: Color, title: &str) -> Rect {
     let inner = block.inner(frame.area());
     frame.render_widget(block, frame.area());
     inner
+}
+
+fn render_status(frame: &mut Frame, area: Rect, status: Option<&str>, palette: Palette) {
+    if let Some(status) = status {
+        frame.render_widget(
+            Paragraph::new(status)
+                .style(Style::default().fg(palette.warning))
+                .alignment(Alignment::Center),
+            area,
+        );
+    }
 }
 
 // --- Menu screen ---
@@ -84,6 +98,7 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize, palette: Palette) 
         c.sessions_before_long_break.to_string(),
         if c.notify { "on" } else { "off" }.to_string(),
         if c.alert_screen { "on" } else { "off" }.to_string(),
+        audio_detail(app),
         theme,
     ];
 
@@ -100,7 +115,7 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize, palette: Palette) 
             } else {
                 Style::default()
             };
-            Line::styled(format!("{marker}{label:<15} ◂ {value:>11} ▸"), style)
+            Line::styled(format!("{marker}{label:<15} ◂ {value} ▸"), style)
         })
         .collect();
     lines.push(Line::raw(""));
@@ -111,19 +126,102 @@ fn render_menu(frame: &mut Frame, app: &App, selected: usize, palette: Palette) 
 
     frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), rows[3]);
 
-    if let Some(status) = &app.status {
-        frame.render_widget(
-            Paragraph::new(status.as_str())
-                .style(Style::default().fg(palette.warning))
-                .alignment(Alignment::Center),
-            rows[5],
-        );
-    }
+    render_status(frame, rows[5], app.status.as_deref(), palette);
 
     render_help(
         frame,
         rows[6],
-        "↑↓ select · ←→ adjust · enter start · t stats · q quit",
+        "↑↓ select · ←→ adjust · enter start/open · a audio · t stats · q quit",
+        palette,
+    );
+}
+
+fn audio_detail(app: &App) -> String {
+    let settings = app.config.tone_settings();
+    let state = if app.config.binaural_beats {
+        "on"
+    } else {
+        "off"
+    };
+    format!(
+        "{state} · {} · {}/{} Hz · {} Hz · {}%",
+        app.config.binaural_preset,
+        settings.base_hz,
+        settings.base_hz + settings.beat_hz,
+        settings.beat_hz,
+        settings.volume_percent,
+    )
+}
+
+fn render_audio_menu(
+    frame: &mut Frame,
+    app: &App,
+    selected: usize,
+    preview: bool,
+    palette: Palette,
+) {
+    let inner = frame_block(frame, palette.fox, " 🦊 Audio Settings ");
+    let settings = app.config.tone_settings();
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Fill(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(AUDIO_MENU_ITEMS.len() as u16),
+            Constraint::Fill(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(format!(
+            "{}/{} Hz · {} Hz difference · {}% volume{}",
+            settings.base_hz,
+            settings.base_hz + settings.beat_hz,
+            settings.beat_hz,
+            settings.volume_percent,
+            if preview { " · previewing" } else { "" },
+        ))
+        .style(Style::default().fg(if preview { palette.work } else { palette.muted }))
+        .alignment(Alignment::Center),
+        rows[1],
+    );
+
+    let values = [
+        if app.config.binaural_beats {
+            "on".to_string()
+        } else {
+            "off".to_string()
+        },
+        app.config.binaural_preset.to_string(),
+        format!("{} Hz", settings.base_hz),
+        format!("{} Hz", settings.beat_hz),
+        format!("{}%", settings.volume_percent),
+    ];
+    let lines: Vec<Line> = AUDIO_MENU_ITEMS
+        .iter()
+        .zip(values)
+        .enumerate()
+        .map(|(index, (label, value))| {
+            let marker = if index == selected { "▸ " } else { "  " };
+            let style = if index == selected {
+                Style::default()
+                    .fg(palette.fox)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            Line::styled(format!("{marker}{label:<16} ◂ {value} ▸"), style)
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), rows[3]);
+    render_status(frame, rows[5], app.status.as_deref(), palette);
+    render_help(
+        frame,
+        rows[6],
+        "↑↓ select · ←→ adjust · p preview · enter/esc/m back · use headphones safely",
         palette,
     );
 }
@@ -152,7 +250,7 @@ fn phase_color(phase: Phase, palette: Palette) -> Color {
     }
 }
 
-fn render_timer(frame: &mut Frame, timer: &Timer, palette: Palette) {
+fn render_timer(frame: &mut Frame, app: &App, timer: &Timer, palette: Palette) {
     let accent = phase_color(timer.phase, palette);
     let inner = frame_block(frame, accent, " 🦊 Focus Fox ");
 
@@ -165,6 +263,7 @@ fn render_timer(frame: &mut Frame, timer: &Timer, palette: Palette) {
             Constraint::Length(5), // big clock
             Constraint::Length(1),
             Constraint::Fill(1),   // progress pie takes the rest
+            Constraint::Length(1), // status
             Constraint::Length(1), // key help
         ])
         .split(inner);
@@ -172,9 +271,10 @@ fn render_timer(frame: &mut Frame, timer: &Timer, palette: Palette) {
     render_phase_line(frame, rows[1], timer, accent, palette);
     render_clock(frame, rows[3], timer, accent, palette);
     render_pie(frame, rows[5], timer, accent, palette);
+    render_status(frame, rows[6], app.status.as_deref(), palette);
     render_help(
         frame,
-        rows[6],
+        rows[7],
         "space pause · s skip · r reset · h/l ±1m · t stats · m menu · q quit",
         palette,
     );
@@ -184,7 +284,7 @@ fn render_timer(frame: &mut Frame, timer: &Timer, palette: Palette) {
 
 /// Full-screen banner shown between phases; the timer is frozen behind it
 /// until the user presses Enter.
-fn render_alert(frame: &mut Frame, timer: &Timer, phase: Phase, palette: Palette) {
+fn render_alert(frame: &mut Frame, app: &App, timer: &Timer, phase: Phase, palette: Palette) {
     let accent = phase_color(phase, palette);
     let inner = frame_block(frame, accent, " 🦊 Focus Fox ");
 
@@ -197,6 +297,7 @@ fn render_alert(frame: &mut Frame, timer: &Timer, phase: Phase, palette: Palette
             Constraint::Length(1), // tagline
             Constraint::Length(1), // upcoming phase length
             Constraint::Fill(1),
+            Constraint::Length(1), // status
             Constraint::Length(1), // key help
         ])
         .split(inner);
@@ -236,7 +337,8 @@ fn render_alert(frame: &mut Frame, timer: &Timer, phase: Phase, palette: Palette
         rows[4],
     );
 
-    render_help(frame, rows[6], "enter continue · s skip · q quit", palette);
+    render_status(frame, rows[6], app.status.as_deref(), palette);
+    render_help(frame, rows[7], "enter continue · s skip · q quit", palette);
 }
 
 // --- Stats overlay ---

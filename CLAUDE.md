@@ -45,8 +45,16 @@ module layout as sweet-nothings.
   `app.rs` owns the event loop (100ms tick, keyboard handling), `ui.rs`
   renders the menu, the alert banner, and the big block-digit clock,
   progress gauge, and session dots. The launch menu includes an
-  `auto`/`dark`/`light` theme preference; `auto` resolves the terminal
-  background once before Ratatui starts.
+  `auto`/`dark`/`light` theme preference and an Audio settings submenu with
+  opt-in binaural playback, named listening-mode presets, one persistent Custom
+  tone, linear volume, and preview; `auto` resolves the terminal background
+  once before Ratatui starts.
+- **`src/audio.rs`** - Best-effort stereo tone synthesis through rodio. A
+  configurable left carrier and right carrier-plus-difference tone play only
+  during preview or unpaused Work phases without an alert. Tone gain uses an
+  independent player for future music-volume support. Playback and audio-device
+  resources stop for breaks, menu visits, preview exit, and app exit. Linux uses
+  ALSA and macOS uses CoreAudio.
 - **`src/theme.rs`** - Persisted theme preference, terminal background
   and true-color capability detection, plus semantic light/dark color palettes
   with ANSI fallbacks used by every TUI screen.
@@ -62,7 +70,10 @@ module layout as sweet-nothings.
   Recording is best-effort: failures surface in the status line, never
   interrupt the timer.
 - **`src/config/`** - XDG config (`~/.config/focus-fox/config.toml`, TOML,
-  humantime durations). CLI args override file values via `merge_args`.
+  humantime durations), including opt-in binaural playback, preset selection,
+  persistent Custom frequencies, and beat volume. Legacy difference-only audio
+  configs migrate during deserialization. CLI args override file values via
+  `merge_args`.
 - **`src/cli/`** - Clap argument parsing.
 
 ## Documentation

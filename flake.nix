@@ -30,12 +30,15 @@
         # notify-send for phase-change notifications (linux only; notifications
         # are best-effort at runtime, so darwin just goes without)
         runtimeDeps = lib.optionals isLinux [ pkgs.libnotify ];
+        audioDevDeps = lib.optionals isLinux [ pkgs.pkg-config pkgs.alsa-lib ];
 
-        mkFocusFox = rustPlatform: rustPlatform.buildRustPackage {
+        mkFocusFox = rustPlatform: alsaLib: rustPlatform.buildRustPackage {
           pname = "focus-fox";
           inherit version;
           src = ./.;
           cargoLock = { lockFile = ./Cargo.lock; };
+          nativeBuildInputs = lib.optionals isLinux [ pkgs.pkg-config ];
+          buildInputs = lib.optionals isLinux [ alsaLib ];
 
           meta = with lib; {
             description = "Terminal-based pomodoro timer";
@@ -46,11 +49,36 @@
         };
 
         # dynamically linked build for nix users
-        unwrapped = mkFocusFox pkgs.rustPlatform;
+        unwrapped = mkFocusFox pkgs.rustPlatform pkgs.alsa-lib;
+
+        # Downloadable Linux binaries run outside the Nix store. Build the
+        # statically linked ALSA client against standard FHS data/plugin paths
+        # so it uses the target distribution's ALSA configuration instead of
+        # embedding references to Nix's build-time alsa-lib output.
+        portableAlsaLib = pkgs.pkgsStatic.alsa-lib.overrideAttrs (old: {
+          # Configure must retain Nix output paths for installation. Change
+          # only constants compiled into libasound after configure completes.
+          postConfigure = (old.postConfigure or "") + ''
+            sed -i \
+              -e 's|^#define ALSA_CONFIG_DIR .*|#define ALSA_CONFIG_DIR "/usr/share/alsa"|' \
+              -e 's|^#define ALSA_PLUGIN_DIR .*|#define ALSA_PLUGIN_DIR "/usr/lib/alsa-lib"|' \
+              include/config.h
+          '';
+        });
 
         # fully static musl build — the portable binary that goes into the
         # deb/rpm/arch packages and the tarball (linux only)
-        static = mkFocusFox pkgs.pkgsStatic.rustPlatform;
+        static = (mkFocusFox pkgs.pkgsStatic.rustPlatform portableAlsaLib).overrideAttrs (old: {
+          # Fail the build if ALSA's Nix-store locations leak back into the
+          # supposedly relocatable release binary.
+          postFixup = (old.postFixup or "") + ''
+            rm -f $out/nix-support/propagated-build-inputs
+          '';
+          disallowedReferences = (old.disallowedReferences or [ ]) ++ [
+            portableAlsaLib
+            (lib.getDev portableAlsaLib)
+          ];
+        });
 
         # binary shipped in release assets: static on linux, native on darwin
         releaseBin = if isLinux then static else unwrapped;
@@ -67,7 +95,7 @@
           aarch64-linux = "arm64";
         }.${system} or null;
 
-        nfpmConfig = pkgs.writeText "nfpm.yaml" ''
+        mkNfpmConfig = dependencies: pkgs.writeText "nfpm.yaml" ''
           name: focus-fox
           arch: ${goArch}
           platform: linux
@@ -77,6 +105,7 @@
           description: Terminal-based pomodoro timer
           homepage: https://github.com/jordangarrison/focus-fox
           license: MIT
+          depends: [${lib.concatStringsSep ", " dependencies}]
           contents:
             - src: ${static}/bin/focus-fox
               dst: /usr/bin/focus-fox
@@ -84,7 +113,9 @@
               dst: /usr/bin/fox
         '';
 
-        mkNfpmPackage = format: pkgs.runCommand "focus-fox-${version}-${format}"
+        mkNfpmPackage = format: dependencies:
+          let nfpmConfig = mkNfpmConfig dependencies;
+          in pkgs.runCommand "focus-fox-${version}-${format}"
           { nativeBuildInputs = [ pkgs.nfpm ]; } ''
           mkdir -p $out
           nfpm package -f ${nfpmConfig} -p ${format} -t $out
@@ -92,14 +123,14 @@
 
         linuxPackages = lib.optionalAttrs (isLinux && goArch != null) {
           inherit static;
-          deb = mkNfpmPackage "deb";
-          rpm = mkNfpmPackage "rpm";
-          arch = mkNfpmPackage "archlinux";
+          deb = mkNfpmPackage "deb" [ "libasound2-data" ];
+          rpm = mkNfpmPackage "rpm" [ "alsa-lib" ];
+          arch = mkNfpmPackage "archlinux" [ "alsa-lib" ];
         };
       in
       {
         devShells.default = pkgs.mkShell {
-          packages = [ rustToolchain ] ++ runtimeDeps;
+          packages = [ rustToolchain ] ++ runtimeDeps ++ audioDevDeps;
         };
 
         packages = {

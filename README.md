@@ -2,7 +2,8 @@
 
 A terminal-based pomodoro timer. Work sessions, short breaks, and a long
 break every few sessions — with a big clock, a progress ring with a fox
-in the middle, and desktop notifications when phases change.
+in the middle, optional binaural beats during focus, and desktop notifications
+when phases change.
 
 ## Demo
 
@@ -61,6 +62,10 @@ Or add it as a flake input to your NixOS / home-manager config:
 
 Desktop notifications shell out to `notify-send` (Linux), so install
 `libnotify` if you want them; the timer works fine without it.
+Audio uses ALSA on Linux and CoreAudio on macOS. Debian, RPM, and Arch packages
+declare their distribution's ALSA configuration package. When installing the
+standalone Linux tarball, make sure ALSA runtime data is installed (normally
+provided by `libasound2-data` or `alsa-lib`).
 
 ## Usage
 
@@ -76,7 +81,8 @@ fox stats                       # session history summary (today/week/streak)
 The binary is installed as both `fox` and `focus-fox` — same program.
 
 Launch opens a configuration menu; tweak values there (or skip straight
-past it with Enter) and start the timer.
+past it with Enter) and start the timer. Binaural tone presets, Custom tone
+controls, volume, and preview live in the Audio settings submenu.
 
 ### Keys
 
@@ -86,10 +92,23 @@ Menu (launch screen):
 |---------------|-------------------------------|
 | `↑`/`↓`, `k`/`j` | select setting             |
 | `←`/`→`, `h`/`l` | adjust value               |
-| `Enter`       | start the timer               |
+| `Enter`       | start timer, or open Audio settings |
+| `a`           | open Audio settings           |
 | `q`/`Esc`     | quit                          |
 
 Menu changes are saved automatically and persist between app starts.
+
+Audio settings:
+
+| Key           | Action                        |
+|---------------|-------------------------------|
+| `↑`/`↓`, `k`/`j` | select setting             |
+| `←`/`→`, `h`/`l` | adjust value               |
+| `p`           | toggle live preview           |
+| `Enter`/`Esc`/`m` | return to launch menu      |
+
+Preview works even when binaural playback is disabled. It stops when you leave
+Audio settings or quit.
 
 Timer:
 
@@ -118,8 +137,42 @@ long_break = "15m"
 sessions_before_long_break = 4
 notify = true
 alert_screen = true
+binaural_beats = false
+binaural_preset = "gamma_experiment"
+binaural_base_hz = 220
+binaural_beat_hz = 40
+binaural_volume_percent = 8
 theme = "auto"
 ```
+
+Set `binaural_beats = true` in the menu or config file to play stereo tones
+during unpaused Work phases. Playback stops during breaks, pauses, phase
+alerts, menu visits, and exit. Default selection is disabled with the Gamma
+experiment preset.
+
+Built-in listening modes:
+
+| Preset | Left / right tones | Difference |
+|--------|--------------------|------------|
+| Active focus | 220 / 238 Hz | 18 Hz |
+| Gamma experiment | 220 / 260 Hz | 40 Hz |
+| Research gamma | 320 / 360 Hz | 40 Hz |
+| Calm concentration | 220 / 230 Hz | 10 Hz |
+| Meditative | 220 / 226 Hz | 6 Hz |
+| Wind-down | 160 / 163 Hz | 3 Hz |
+| Custom | 100–1000 Hz base | 1–100 Hz |
+
+Preset names are listening modes, not promises of cognitive or health effects.
+Custom base tone changes in 10 Hz steps; beat difference changes in 1 Hz steps.
+One Custom slot persists while you try built-in presets. Editing a built-in base
+or difference copies that preset into Custom before changing it. Beat volume is
+linear gain from 1–100% and defaults to 8%.
+
+Headphones are required for the binaural effect. Start at a safe volume and
+stop listening if sound becomes uncomfortable. Audio-device failures are
+non-fatal and appear in the status line. Older configs migrate automatically:
+legacy 40 Hz uses Gamma experiment, while other differences become Custom with
+a 220 Hz base.
 
 `theme = "auto"` queries the terminal background when Focus Fox starts and
 selects the matching palette. This follows the terminal rather than the OS
@@ -131,7 +184,7 @@ support automatically use an ANSI palette.
 ## Development
 
 ```bash
-nix develop     # dev shell with rust toolchain + libnotify
+nix develop     # dev shell with rust toolchain + libnotify + ALSA on Linux
 cargo run
 cargo test
 nix build       # release build with notify-send wrapped onto PATH
