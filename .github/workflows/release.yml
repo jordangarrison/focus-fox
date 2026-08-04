@@ -13,7 +13,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -33,9 +33,12 @@ jobs:
           - os: macos-14 # aarch64-darwin: tarball
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: DeterminateSystems/nix-installer-action@v16
+      # v21+ installs Determinate Nix by default; keep upstream Nix.
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: false
 
       - name: Build release assets
         run: |
@@ -51,7 +54,7 @@ jobs:
 
       - name: Upload workflow artifacts
         if: "!startsWith(github.ref, 'refs/tags/')"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: focus-fox-${{ matrix.os }}
           path: dist/*
