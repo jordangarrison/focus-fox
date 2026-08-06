@@ -17,9 +17,9 @@ pub fn render(frame: &mut Frame, app: &App) {
         (Screen::Timer(timer), Some(phase)) => render_alert(frame, app, timer, phase, palette),
         (Screen::Timer(timer), None) => render_timer(frame, app, timer, palette),
         (Screen::Menu { selected }, _) => render_menu(frame, app, *selected, palette),
-        (Screen::AudioMenu { selected, preview }, _) => {
-            render_audio_menu(frame, app, *selected, *preview, palette)
-        }
+    }
+    if let Some(view) = &app.audio_view {
+        render_audio_menu(frame, app, view.selected, view.preview, palette);
     }
     if let Some(summary) = &app.stats_view {
         render_stats(frame, summary, palette);
@@ -153,6 +153,8 @@ fn audio_detail(app: &App) -> String {
     )
 }
 
+/// Full-frame audio-settings panel drawn over the current screen; opened
+/// from both the launch menu and the timer, which keeps ticking underneath.
 fn render_audio_menu(
     frame: &mut Frame,
     app: &App,
@@ -160,6 +162,7 @@ fn render_audio_menu(
     preview: bool,
     palette: Palette,
 ) {
+    frame.render_widget(Clear, frame.area());
     let inner = frame_block(frame, palette.fox, " 🦊 Audio Settings ");
     let settings = app.config.tone_settings();
     let rows = Layout::default()
@@ -221,7 +224,7 @@ fn render_audio_menu(
     render_help(
         frame,
         rows[6],
-        "↑↓ select · ←→ adjust · p preview · enter/esc/m back · use headphones safely",
+        "↑↓ select · ←→ adjust · p preview · enter/esc close · use headphones safely",
         palette,
     );
 }
@@ -275,7 +278,7 @@ fn render_timer(frame: &mut Frame, app: &App, timer: &Timer, palette: Palette) {
     render_help(
         frame,
         rows[7],
-        "space pause · s skip · r reset · h/l ±1m · a audio · t stats · m menu · q quit",
+        "space pause · s skip · r reset · h/l ±1m · a audio · A audio menu · t stats · m menu · q quit",
         palette,
     );
 }

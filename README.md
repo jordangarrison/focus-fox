@@ -82,7 +82,8 @@ The binary is installed as both `fox` and `focus-fox` — same program.
 
 Launch opens a configuration menu; tweak values there (or skip straight
 past it with Enter) and start the timer. Binaural tone presets, Custom tone
-controls, volume, and preview live in the Audio settings submenu.
+controls, volume, and preview live in the Audio settings overlay, reachable
+from both the launch menu and the running timer.
 
 ### Keys
 
@@ -98,17 +99,18 @@ Menu (launch screen):
 
 Menu changes are saved automatically and persist between app starts.
 
-Audio settings:
+Audio settings (overlay over the menu or the timer):
 
 | Key           | Action                        |
 |---------------|-------------------------------|
 | `↑`/`↓`, `k`/`j` | select setting             |
 | `←`/`→`, `h`/`l` | adjust value               |
 | `p`           | toggle live preview           |
-| `Enter`/`Esc`/`m` | return to launch menu      |
+| `Enter`/`Esc`/`A` | close the overlay          |
 
-Preview works even when binaural playback is disabled. It stops when you leave
-Audio settings or quit.
+Preview works even when binaural playback is disabled. It stops when you close
+the overlay or quit. Opened from the timer, the clock keeps ticking
+underneath and work audio keeps playing, so you can adjust the tone live.
 
 Timer:
 
@@ -119,6 +121,7 @@ Timer:
 | `r`         | restart this phase          |
 | `←`/`→`, `h`/`l` | jump back / forward 1m |
 | `a`         | toggle binaural audio       |
+| `A`         | Audio settings overlay      |
 | `t`         | stats overlay (`t`/`Esc` closes) |
 | `m`         | back to the menu            |
 | `q`/`Esc`   | quit                        |

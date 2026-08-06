@@ -46,10 +46,14 @@ module layout as sweet-nothings.
   `app.rs` owns the event loop (100ms tick, keyboard handling), `ui.rs`
   renders the menu, the alert banner, and the big block-digit clock,
   progress gauge, and session dots. The launch menu includes an
-  `auto`/`dark`/`light` theme preference and an Audio settings submenu with
-  opt-in binaural playback, named listening-mode presets, one persistent Custom
-  tone, linear volume, and preview; `auto` resolves the terminal background
-  once before Ratatui starts.
+  `auto`/`dark`/`light` theme preference; `auto` resolves the terminal
+  background once before Ratatui starts. Audio settings — opt-in binaural
+  playback, named listening-mode presets, one persistent Custom tone,
+  linear volume, and preview — live in a full-frame overlay
+  (`App.audio_view`, like `stats_view`) opened with `a`/Enter from the
+  menu or `A` from the timer, which keeps ticking underneath; the overlay
+  swallows all keys (they collide with timer bindings) and alerts evict
+  it like they evict the stats overlay.
 - **`src/audio.rs`** - Best-effort stereo tone synthesis through rodio. A
   configurable left carrier and right carrier-plus-difference tone play only
   during preview or unpaused Work phases without an alert. Tone gain uses an
