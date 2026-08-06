@@ -58,3 +58,33 @@ jobs:
         with:
           name: focus-fox-${{ matrix.os }}
           path: dist/*
+
+  update-homebrew:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Update Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          response="$(gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            repos/jordangarrison/homebrew-tap/actions/workflows/update-formula.yml/dispatches \
+            -f ref=main \
+            -f "inputs[formula]=focus-fox" \
+            -f "inputs[tag]=$RELEASE_TAG")"
+          run_id="$(jq -r '.workflow_run_id // empty' <<<"$response")"
+          if [[ -z "$run_id" ]]
+          then
+            echo "Homebrew tap dispatch did not return a workflow run ID" >&2
+            exit 1
+          fi
+          gh run watch "$run_id" \
+            --repo jordangarrison/homebrew-tap \
+            --interval 10 \
+            --exit-status

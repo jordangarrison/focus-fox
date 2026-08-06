@@ -21,7 +21,15 @@ https://github.com/user-attachments/assets/59594780-4102-4dbb-92e4-9838c95530f9
 
 ## Install
 
-Grab a package from the [latest release](https://github.com/jordangarrison/focus-fox/releases/latest):
+Homebrew on Apple Silicon macOS, ARM64 Linux, or x86_64 Linux:
+
+```bash
+brew install jordangarrison/tap/focus-fox
+```
+
+Intel macOS is not supported.
+
+Or grab a package from the [latest release](https://github.com/jordangarrison/focus-fox/releases/latest):
 
 | Platform | Asset |
 |----------|-------|
@@ -210,5 +218,10 @@ Releases are automated with release-please: `feat:`/`fix:` commits on
 updates the changelog, tags, and creates the GitHub release. The release
 workflow then builds every asset with `nix build .#release` on Linux
 (x86_64 + arm64) and macOS (Apple Silicon) runners and attaches them.
-No Intel mac build — nixpkgs 26.11 dropped the platform. Pushing a `v*`
-tag by hand triggers the same asset build.
+After every asset uploads, it dispatches the shared
+[`jordangarrison/homebrew-tap`](https://github.com/jordangarrison/homebrew-tap)
+updater and waits for its macOS/Linux test matrix. A successful tap run commits
+the new checksums directly to the tap's `main` branch; a failure leaves the
+GitHub release published and the formula unchanged so the dispatch can be
+retried safely. No Intel mac build — nixpkgs 26.11 dropped the platform.
+Pushing a `v*` tag by hand triggers the same asset build and tap update.

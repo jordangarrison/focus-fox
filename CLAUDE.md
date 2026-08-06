@@ -109,6 +109,10 @@ Fully automated via release-please + nix. The flow:
 4. `release.yml` runs `nix build .#release` on three runners
    (`ubuntu-latest`, `ubuntu-24.04-arm`, `macos-14`) and uploads
    everything with `gh release upload`.
+5. Once every asset upload succeeds, `release.yml` dispatches the shared
+   `jordangarrison/homebrew-tap` `update-formula.yml` workflow, waits for its
+   Homebrew test matrix, and propagates failure. The GitHub release stays
+   published if the tap update fails and the formula can be retried manually.
 
 Notes:
 
@@ -126,7 +130,15 @@ Notes:
   platform, and the flake enumerates supported systems explicitly
   (don't switch back to `eachDefaultSystem`).
 - Manual escape hatch: pushing a `v*` tag by hand also triggers
-  `release.yml`, which creates the GitHub release if missing.
+  `release.yml`, which creates the GitHub release if missing and updates the
+  Homebrew tap after all assets upload.
+- The repository secret `HOMEBREW_TAP_TOKEN` must be a fine-grained token
+  scoped only to `jordangarrison/homebrew-tap` with repository Actions write
+  permission. It dispatches and watches the tap workflow without content
+  access; GitHub documents that permission for the
+  [workflow dispatch endpoint](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
+- Future tools share the same tap updater. Add a formula and manifest entry to
+  the tap, then reuse the small dispatch-and-wait job from `release.yml`.
 
 ### Notes
 
