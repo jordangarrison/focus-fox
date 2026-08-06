@@ -39,8 +39,15 @@ pub const AUDIO_MENU_ITEMS: [&str; 5] = [
 
 pub enum Screen {
     Menu { selected: usize },
-    AudioMenu { selected: usize, preview: bool },
     Timer(Timer),
+}
+
+/// State of the audio-settings overlay. Drawn over the current screen like
+/// the stats panel, so opening it from the timer never drops the timer.
+#[derive(Debug, PartialEq, Eq)]
+pub struct AudioView {
+    pub selected: usize,
+    pub preview: bool,
 }
 
 pub struct App {
@@ -56,6 +63,9 @@ pub struct App {
     /// When set, a stats panel is drawn over the current screen. The timer
     /// keeps ticking underneath.
     pub stats_view: Option<Summary>,
+    /// When set, the audio-settings overlay is drawn over the current
+    /// screen. The timer keeps ticking underneath.
+    pub audio_view: Option<AudioView>,
     detected_theme: ThemeMode,
     true_color: bool,
     should_quit: bool,
@@ -76,6 +86,7 @@ impl App {
             alert: None,
             store,
             stats_view: None,
+            audio_view: None,
             detected_theme,
             true_color,
             should_quit: false,
@@ -125,9 +136,10 @@ impl App {
                 announce(&self.config, phase);
                 if self.config.alert_screen {
                     self.alert = Some(phase);
-                    // The alert outranks the stats overlay — never let it
-                    // fire hidden underneath the panel.
+                    // The alert outranks the overlays — never let it fire
+                    // hidden underneath a panel.
                     self.stats_view = None;
+                    self.audio_view = None;
                 }
             }
         }
@@ -153,12 +165,14 @@ impl App {
             }
             return;
         }
+        // The audio overlay swallows keys wholesale — its bindings (p, s, h,
+        // l, ...) collide with the timer's underneath.
+        if self.audio_view.is_some() {
+            self.handle_audio_view_key(code);
+            return;
+        }
         if code == KeyCode::Esc {
-            if matches!(self.screen, Screen::AudioMenu { .. }) {
-                self.screen = Screen::Menu { selected: 6 };
-            } else {
-                self.should_quit = true;
-            }
+            self.should_quit = true;
             return;
         }
         if self.alert.is_some() {
@@ -186,10 +200,6 @@ impl App {
             }
             return;
         }
-        if matches!(self.screen, Screen::AudioMenu { .. }) {
-            self.handle_audio_menu_key(code);
-            return;
-        }
         if code == KeyCode::Char('t') {
             self.open_stats();
             return;
@@ -208,12 +218,12 @@ impl App {
                     KeyCode::Right | KeyCode::Char('l') => self.adjust(selected, 1),
                     KeyCode::Enter => {
                         if selected == 6 {
-                            self.open_audio_menu();
+                            self.open_audio_view();
                         } else {
                             self.screen = Screen::Timer(Timer::new(self.config.clone()));
                         }
                     }
-                    KeyCode::Char('a') => self.open_audio_menu(),
+                    KeyCode::Char('a') => self.open_audio_view(),
                     _ => {}
                 }
             }
@@ -248,51 +258,44 @@ impl App {
                     );
                     self.save_config();
                 }
+                KeyCode::Char('A') => self.open_audio_view(),
                 KeyCode::Char('m') => self.screen = Screen::Menu { selected: 0 },
                 _ => {}
             },
-            Screen::AudioMenu { .. } => unreachable!("audio menu handled above"),
         }
     }
 
-    fn open_audio_menu(&mut self) {
-        self.screen = Screen::AudioMenu {
+    fn open_audio_view(&mut self) {
+        self.audio_view = Some(AudioView {
             selected: 0,
             preview: false,
-        };
+        });
     }
 
-    fn handle_audio_menu_key(&mut self, code: KeyCode) {
-        let (selected, preview) = match &self.screen {
-            Screen::AudioMenu { selected, preview } => (*selected, *preview),
-            _ => return,
+    fn handle_audio_view_key(&mut self, code: KeyCode) {
+        let Some(view) = &mut self.audio_view else {
+            return;
         };
         match code {
             KeyCode::Up | KeyCode::Char('k') => {
-                self.screen = Screen::AudioMenu {
-                    selected: selected
-                        .checked_sub(1)
-                        .unwrap_or(AUDIO_MENU_ITEMS.len() - 1),
-                    preview,
-                };
+                view.selected = view
+                    .selected
+                    .checked_sub(1)
+                    .unwrap_or(AUDIO_MENU_ITEMS.len() - 1);
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                self.screen = Screen::AudioMenu {
-                    selected: (selected + 1) % AUDIO_MENU_ITEMS.len(),
-                    preview,
-                };
+                view.selected = (view.selected + 1) % AUDIO_MENU_ITEMS.len();
             }
-            KeyCode::Left | KeyCode::Char('h') => self.adjust_audio(selected, -1),
-            KeyCode::Right | KeyCode::Char('l') => self.adjust_audio(selected, 1),
-            KeyCode::Char('p') => {
-                self.screen = Screen::AudioMenu {
-                    selected,
-                    preview: !preview,
-                };
+            KeyCode::Left | KeyCode::Char('h') => {
+                let selected = view.selected;
+                self.adjust_audio(selected, -1);
             }
-            KeyCode::Enter | KeyCode::Esc | KeyCode::Char('m') => {
-                self.screen = Screen::Menu { selected: 6 };
+            KeyCode::Right | KeyCode::Char('l') => {
+                let selected = view.selected;
+                self.adjust_audio(selected, 1);
             }
+            KeyCode::Char('p') => view.preview = !view.preview,
+            KeyCode::Enter | KeyCode::Esc | KeyCode::Char('A') => self.audio_view = None,
             _ => {}
         }
     }
@@ -381,7 +384,7 @@ impl App {
         if self.should_quit || self.alert.is_some() {
             return None;
         }
-        if matches!(self.screen, Screen::AudioMenu { preview: true, .. }) {
+        if self.audio_view.as_ref().is_some_and(|view| view.preview) {
             return Some(self.config.tone_settings());
         }
         if !self.config.binaural_beats {
@@ -391,7 +394,7 @@ impl App {
             Screen::Timer(timer) if timer.phase == Phase::Work && !timer.paused => {
                 Some(self.config.tone_settings())
             }
-            Screen::Menu { .. } | Screen::AudioMenu { .. } | Screen::Timer(_) => None,
+            Screen::Menu { .. } | Screen::Timer(_) => None,
         }
     }
 
@@ -506,25 +509,27 @@ mod tests {
     fn remaining(app: &App) -> Duration {
         match &app.screen {
             Screen::Timer(timer) => timer.remaining,
-            Screen::Menu { .. } | Screen::AudioMenu { .. } => panic!("expected timer screen"),
+            Screen::Menu { .. } => panic!("expected timer screen"),
         }
     }
 
     #[test]
-    fn launch_menu_toggles_audio_and_opens_submenu() {
+    fn launch_menu_toggles_audio_and_opens_overlay() {
         let mut app = App::new(Config::default(), None, ThemeMode::Dark, false);
 
         app.adjust(6, 1);
         assert!(app.config.binaural_beats);
 
         app.handle_key(KeyCode::Char('a'), KeyModifiers::NONE);
-        assert!(matches!(
-            app.screen,
-            Screen::AudioMenu {
+        assert_eq!(
+            app.audio_view,
+            Some(AudioView {
                 selected: 0,
                 preview: false
-            }
-        ));
+            })
+        );
+        // The overlay draws over the menu; the screen itself is untouched.
+        assert!(matches!(app.screen, Screen::Menu { .. }));
     }
 
     #[test]
@@ -600,7 +605,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_works_while_disabled_and_stops_when_submenu_closes() {
+    fn preview_works_while_disabled_and_stops_when_overlay_closes() {
         let mut app = App::new(Config::default(), None, ThemeMode::Dark, false);
         assert!(!app.config.binaural_beats);
         app.handle_key(KeyCode::Char('a'), KeyModifiers::NONE);
@@ -611,9 +616,90 @@ mod tests {
         assert_eq!(app.audio_target().unwrap().volume_percent, 31);
 
         app.handle_key(KeyCode::Esc, KeyModifiers::NONE);
-        assert!(matches!(app.screen, Screen::Menu { selected: 6 }));
+        assert!(app.audio_view.is_none());
+        assert!(matches!(app.screen, Screen::Menu { .. }));
         assert_eq!(app.audio_target(), None);
         assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn shift_a_opens_audio_overlay_on_timer_and_swallows_timer_keys() {
+        let mut app = app_on_timer(false);
+        app.handle_key(KeyCode::Char('A'), KeyModifiers::SHIFT);
+        assert_eq!(
+            app.audio_view,
+            Some(AudioView {
+                selected: 0,
+                preview: false
+            })
+        );
+        assert!(matches!(app.screen, Screen::Timer(_)));
+
+        // p toggles preview, not pause.
+        app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
+        assert!(app.audio_view.as_ref().unwrap().preview);
+        match &app.screen {
+            Screen::Timer(timer) => assert!(!timer.paused),
+            _ => panic!("expected timer screen"),
+        }
+
+        // s must not skip the phase, and t must not open stats.
+        app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
+        assert_eq!(remaining(&app), Duration::from_secs(10));
+        app.handle_key(KeyCode::Char('t'), KeyModifiers::NONE);
+        assert!(app.stats_view.is_none());
+    }
+
+    #[test]
+    fn audio_overlay_closes_on_enter_and_shift_a_without_dropping_timer() {
+        let mut app = app_on_timer(false);
+        app.handle_key(KeyCode::Char('A'), KeyModifiers::SHIFT);
+        app.handle_key(KeyCode::Enter, KeyModifiers::NONE);
+        assert!(app.audio_view.is_none());
+        assert!(matches!(app.screen, Screen::Timer(_)));
+        assert!(!app.should_quit);
+
+        app.handle_key(KeyCode::Char('A'), KeyModifiers::SHIFT);
+        app.handle_key(KeyCode::Char('A'), KeyModifiers::SHIFT);
+        assert!(app.audio_view.is_none());
+        assert!(matches!(app.screen, Screen::Timer(_)));
+    }
+
+    #[test]
+    fn overlay_adjustments_change_config_from_the_timer_screen() {
+        let mut app = app_on_timer(false);
+        assert!(!app.config.binaural_beats);
+        app.handle_key(KeyCode::Char('A'), KeyModifiers::SHIFT);
+
+        // Enabled row is selected first; → toggles it on.
+        app.handle_key(KeyCode::Right, KeyModifiers::NONE);
+        assert!(app.config.binaural_beats);
+
+        // ↓ to the preset row; → cycles the preset.
+        let before = app.config.binaural_preset;
+        app.handle_key(KeyCode::Down, KeyModifiers::NONE);
+        app.handle_key(KeyCode::Right, KeyModifiers::NONE);
+        assert_ne!(app.config.binaural_preset, before);
+    }
+
+    #[test]
+    fn timer_ticks_and_audio_plays_under_the_audio_overlay() {
+        let mut app = app_on_timer(false);
+        app.config.binaural_beats = true;
+        app.handle_key(KeyCode::Char('A'), KeyModifiers::SHIFT);
+        app.advance_clock(Duration::from_secs(3));
+        assert_eq!(remaining(&app), Duration::from_secs(7));
+        // Work audio keeps playing while settings are adjusted live.
+        assert_eq!(app.audio_target(), Some(app.config.tone_settings()));
+    }
+
+    #[test]
+    fn alert_evicts_the_audio_overlay() {
+        let mut app = app_on_timer(true);
+        app.handle_key(KeyCode::Char('A'), KeyModifiers::SHIFT);
+        app.advance_clock(Duration::from_secs(10)); // work ends under the overlay
+        assert_eq!(app.alert, Some(Phase::ShortBreak));
+        assert!(app.audio_view.is_none());
     }
 
     #[test]
