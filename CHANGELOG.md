@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/jordangarrison/focus-fox/compare/v0.5.0...v0.6.0) (2026-08-06)
+
+
+### Features
+
+* open audio settings from the timer screen ([#11](https://github.com/jordangarrison/focus-fox/issues/11)) ([4aa80bb](https://github.com/jordangarrison/focus-fox/commit/4aa80bb2cdd2525c691bb8144f6fc7867bb426a4))
+
 ## [0.5.0](https://github.com/jordangarrison/focus-fox/compare/v0.4.0...v0.5.0) (2026-08-04)
 
 
