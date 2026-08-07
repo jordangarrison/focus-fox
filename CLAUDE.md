@@ -120,7 +120,12 @@ Notes:
   reproducibility from `flake.lock` is the point.
 - Linux assets are built from a static musl binary (`.#static`); the
   deb/rpm/arch packages are generated from it with nfpm. macOS is a
-  plain tarball of the native aarch64-darwin build.
+  tarball of the native aarch64-darwin build with its libiconv load
+  command rewritten to `/usr/lib/libiconv.2.dylib` — the raw Nix build
+  links libiconv from the Nix store, which crashes at dyld load time on
+  Macs without Nix. The relink derivation fails the build if any
+  `/nix/store` reference survives (`otool -L` check +
+  `disallowedReferences`).
 - The flake reads `version` from `Cargo.toml`, so release-please bumps
   flow through automatically. `.release-please-manifest.json` tracks the
   released version; tags are plain `vX.Y.Z`
