@@ -1,16 +1,5 @@
 # Changelog
 
-## [1.0.0](https://github.com/jordangarrison/focus-fox/compare/v0.6.0...v1.0.0) (2026-08-07)
-
-
-### ⚠ BREAKING CHANGES
-
-* volume percentages now live on a calibrated loudness scale shared by beats and music (100% is roughly -16 dBFS RMS). A stored binaural_volume_percent keeps its number but plays quieter than in 0.6; raise an old 8 to about 36 for the previous loudness.
-
-### Features
-
-* layer generative lofi music under the binaural beats ([#13](https://github.com/jordangarrison/focus-fox/issues/13)) ([a34f789](https://github.com/jordangarrison/focus-fox/commit/a34f789a64bede4cc193835823fa844f125a7d53))
-
 ## [0.6.0](https://github.com/jordangarrison/focus-fox/compare/v0.5.0...v0.6.0) (2026-08-06)
 
 
