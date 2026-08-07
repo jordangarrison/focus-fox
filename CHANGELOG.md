@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.1](https://github.com/jordangarrison/focus-fox/compare/v0.7.0...v0.7.1) (2026-08-07)
+
+
+### Features
+
+* automated Homebrew installation + fix broken darwin release binaries ([#16](https://github.com/jordangarrison/focus-fox/issues/16)) ([6675132](https://github.com/jordangarrison/focus-fox/commit/6675132a80d9bb4000a413a851fe345ecb6661d5))
+
+
+### Miscellaneous Chores
+
+* correct next release to a patch bump ([7c40851](https://github.com/jordangarrison/focus-fox/commit/7c408517ee34f8bb56acefa4e9ff94057b3ee3e4))
+
 ## [0.7.0](https://github.com/jordangarrison/focus-fox/compare/v0.6.0...v0.7.0) (2026-08-07)
 
 
