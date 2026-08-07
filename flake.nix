@@ -92,7 +92,9 @@
                 while read -r ref; do
                   install_name_tool -change "$ref" /usr/lib/libiconv.2.dylib "$bin"
                 done
-              if otool -L "$bin" | grep /nix/store; then
+              # tail: otool's first line is the inspected binary's own
+              # (store) path, not a load command
+              if otool -L "$bin" | tail -n +2 | grep /nix/store; then
                 echo "error: $bin still links against the Nix store" >&2
                 exit 1
               fi
