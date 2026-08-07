@@ -16,13 +16,68 @@ pub const MIN_BINAURAL_VOLUME_PERCENT: u8 = 1;
 pub const MAX_BINAURAL_VOLUME_PERCENT: u8 = 100;
 pub const DEFAULT_BINAURAL_BASE_HZ: u16 = 220;
 pub const DEFAULT_BINAURAL_BEAT_HZ: u16 = 40;
-pub const DEFAULT_BINAURAL_VOLUME_PERCENT: u8 = 8;
+// Tone and music are loudness-calibrated to a shared reference (see
+// audio::REFERENCE_RMS), so equal percentages sound equally loud and the
+// two defaults match. 36% on that scale equals the loudness the tone
+// default produced before calibration.
+pub const DEFAULT_BINAURAL_VOLUME_PERCENT: u8 = 36;
+pub const MIN_MUSIC_VOLUME_PERCENT: u8 = 1;
+pub const MAX_MUSIC_VOLUME_PERCENT: u8 = 100;
+pub const DEFAULT_MUSIC_VOLUME_PERCENT: u8 = 36;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToneSettings {
     pub base_hz: u16,
     pub beat_hz: u16,
     pub volume_percent: u8,
+}
+
+impl ToneSettings {
+    /// True when only the volume differs, so playback can continue with a
+    /// gain change instead of a rebuild.
+    pub fn same_tone(self, other: Self) -> bool {
+        Self {
+            volume_percent: 0,
+            ..self
+        } == Self {
+            volume_percent: 0,
+            ..other
+        }
+    }
+}
+
+/// Where background music comes from. One built-in source today; user-supplied
+/// tracks or an API-backed source would be new variants here.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MusicSource {
+    #[default]
+    Lofi,
+}
+
+/// Everything music playback depends on. Excludes the tone volume and any
+/// random seed so per-channel change detection stays correct.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MusicSettings {
+    pub source: MusicSource,
+    pub preset: BinauralPreset,
+    pub base_hz: u16,
+    pub beat_hz: u16,
+    pub volume_percent: u8,
+}
+
+impl MusicSettings {
+    /// True when only the volume differs, so the track can keep playing with a
+    /// gain change instead of restarting.
+    pub fn same_track(self, other: Self) -> bool {
+        Self {
+            volume_percent: 0,
+            ..self
+        } == Self {
+            volume_percent: 0,
+            ..other
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,6 +162,12 @@ pub struct Config {
     pub binaural_base_hz: u16,
     pub binaural_beat_hz: u16,
     pub binaural_volume_percent: u8,
+    /// Play background music during unpaused work sessions.
+    pub music_enabled: bool,
+    pub music_source: MusicSource,
+    pub music_volume_percent: u8,
+    /// Keep music playing through breaks (tones stay work-only).
+    pub music_during_breaks: bool,
     pub theme: ThemePreference,
 }
 
@@ -124,6 +185,10 @@ impl Default for Config {
             binaural_base_hz: DEFAULT_BINAURAL_BASE_HZ,
             binaural_beat_hz: DEFAULT_BINAURAL_BEAT_HZ,
             binaural_volume_percent: DEFAULT_BINAURAL_VOLUME_PERCENT,
+            music_enabled: false,
+            music_source: MusicSource::Lofi,
+            music_volume_percent: DEFAULT_MUSIC_VOLUME_PERCENT,
+            music_during_breaks: false,
             theme: ThemePreference::Auto,
         }
     }
@@ -146,6 +211,10 @@ struct ConfigFile {
     binaural_base_hz: Option<u16>,
     binaural_beat_hz: Option<u16>,
     binaural_volume_percent: Option<u8>,
+    music_enabled: bool,
+    music_source: MusicSource,
+    music_volume_percent: u8,
+    music_during_breaks: bool,
     theme: ThemePreference,
 }
 
@@ -164,6 +233,10 @@ impl Default for ConfigFile {
             binaural_base_hz: None,
             binaural_beat_hz: None,
             binaural_volume_percent: None,
+            music_enabled: config.music_enabled,
+            music_source: config.music_source,
+            music_volume_percent: config.music_volume_percent,
+            music_during_breaks: config.music_during_breaks,
             theme: config.theme,
         }
     }
@@ -200,6 +273,10 @@ impl<'de> Deserialize<'de> for Config {
             binaural_volume_percent: file
                 .binaural_volume_percent
                 .unwrap_or(DEFAULT_BINAURAL_VOLUME_PERCENT),
+            music_enabled: file.music_enabled,
+            music_source: file.music_source,
+            music_volume_percent: file.music_volume_percent,
+            music_during_breaks: file.music_during_breaks,
             theme: file.theme,
         }
         .normalized())
@@ -273,6 +350,17 @@ impl Config {
         }
     }
 
+    pub fn music_settings(&self) -> MusicSettings {
+        let tone = self.tone_settings();
+        MusicSettings {
+            source: self.music_source,
+            preset: self.binaural_preset,
+            base_hz: tone.base_hz,
+            beat_hz: tone.beat_hz,
+            volume_percent: self.music_volume_percent,
+        }
+    }
+
     pub fn select_custom_from_active(&mut self) {
         if let Some((base_hz, beat_hz)) = self.binaural_preset.frequencies() {
             self.binaural_base_hz = base_hz;
@@ -289,6 +377,9 @@ impl Config {
         self.binaural_volume_percent = self
             .binaural_volume_percent
             .clamp(MIN_BINAURAL_VOLUME_PERCENT, MAX_BINAURAL_VOLUME_PERCENT);
+        self.music_volume_percent = self
+            .music_volume_percent
+            .clamp(MIN_MUSIC_VOLUME_PERCENT, MAX_MUSIC_VOLUME_PERCENT);
         self
     }
 }
@@ -339,7 +430,7 @@ mod tests {
             ToneSettings {
                 base_hz: 220,
                 beat_hz: 40,
-                volume_percent: 8,
+                volume_percent: DEFAULT_BINAURAL_VOLUME_PERCENT,
             }
         );
     }
@@ -377,7 +468,78 @@ alert_screen = true
         .unwrap();
         assert!(!config.binaural_beats);
         assert_eq!(config.binaural_preset, BinauralPreset::GammaExperiment);
+        assert!(!config.music_enabled);
+        assert_eq!(config.music_source, MusicSource::Lofi);
+        assert_eq!(config.music_volume_percent, DEFAULT_MUSIC_VOLUME_PERCENT);
+        assert!(!config.music_during_breaks);
         assert_eq!(config.theme, ThemePreference::Auto);
+    }
+
+    #[test]
+    fn music_fields_round_trip_and_clamp() {
+        let config = Config {
+            music_enabled: true,
+            music_volume_percent: 55,
+            music_during_breaks: true,
+            ..Config::default()
+        };
+        let encoded = toml::to_string(&config).unwrap();
+        assert!(encoded.contains("music_source = \"lofi\""));
+        let decoded: Config = toml::from_str(&encoded).unwrap();
+        assert!(decoded.music_enabled);
+        assert_eq!(decoded.music_volume_percent, 55);
+        assert!(decoded.music_during_breaks);
+
+        let clamped: Config = toml::from_str("music_volume_percent = 200").unwrap();
+        assert_eq!(clamped.music_volume_percent, MAX_MUSIC_VOLUME_PERCENT);
+        let clamped: Config = toml::from_str("music_volume_percent = 0").unwrap();
+        assert_eq!(clamped.music_volume_percent, MIN_MUSIC_VOLUME_PERCENT);
+    }
+
+    #[test]
+    fn music_settings_resolve_preset_frequencies() {
+        let config = Config {
+            binaural_preset: BinauralPreset::WindDown,
+            music_volume_percent: 33,
+            ..Config::default()
+        };
+        assert_eq!(
+            config.music_settings(),
+            MusicSettings {
+                source: MusicSource::Lofi,
+                preset: BinauralPreset::WindDown,
+                base_hz: 160,
+                beat_hz: 3,
+                volume_percent: 33,
+            }
+        );
+    }
+
+    #[test]
+    fn same_track_and_same_tone_ignore_volume_only() {
+        let music = Config::default().music_settings();
+        let louder = MusicSettings {
+            volume_percent: 90,
+            ..music
+        };
+        let retuned = MusicSettings {
+            beat_hz: music.beat_hz + 1,
+            ..music
+        };
+        assert!(music.same_track(louder));
+        assert!(!music.same_track(retuned));
+
+        let tone = Config::default().tone_settings();
+        let louder = ToneSettings {
+            volume_percent: 90,
+            ..tone
+        };
+        let retuned = ToneSettings {
+            base_hz: tone.base_hz + 10,
+            ..tone
+        };
+        assert!(tone.same_tone(louder));
+        assert!(!tone.same_tone(retuned));
     }
 
     #[test]

@@ -2,8 +2,8 @@
 
 A terminal-based pomodoro timer. Work sessions, short breaks, and a long
 break every few sessions — with a big clock, a progress ring with a fox
-in the middle, optional binaural beats during focus, and desktop notifications
-when phases change.
+in the middle, optional binaural beats and generative lofi music during
+focus, and desktop notifications when phases change.
 
 ## Demo
 
@@ -82,8 +82,8 @@ The binary is installed as both `fox` and `focus-fox` — same program.
 
 Launch opens a configuration menu; tweak values there (or skip straight
 past it with Enter) and start the timer. Binaural tone presets, Custom tone
-controls, volume, and preview live in the Audio settings overlay, reachable
-from both the launch menu and the running timer.
+controls, volume, lofi music, and preview live in the Audio settings
+overlay, reachable from both the launch menu and the running timer.
 
 ### Keys
 
@@ -108,8 +108,9 @@ Audio settings (overlay over the menu or the timer):
 | `p`           | toggle live preview           |
 | `Enter`/`Esc`/`A` | close the overlay          |
 
-Preview works even when binaural playback is disabled. It stops when you close
-the overlay or quit. Opened from the timer, the clock keeps ticking
+Preview plays both the tones and the music (when configured) even when
+playback is disabled, so you can balance the two volumes. It stops when you
+close the overlay or quit. Opened from the timer, the clock keeps ticking
 underneath and work audio keeps playing, so you can adjust the tone live.
 
 Timer:
@@ -121,6 +122,7 @@ Timer:
 | `r`         | restart this phase          |
 | `←`/`→`, `h`/`l` | jump back / forward 1m |
 | `a`         | toggle binaural audio       |
+| `b`         | toggle lofi music           |
 | `A`         | Audio settings overlay      |
 | `t`         | stats overlay (`t`/`Esc` closes) |
 | `m`         | back to the menu            |
@@ -128,7 +130,8 @@ Timer:
 
 Jumping forward past the end finishes the phase as if it ran out
 naturally; jumping back stops at the start of the phase. Toggling audio
-with `a` persists to the config file, just like changing it in the menu.
+with `a` or music with `b` persists to the config file, just like
+changing it in the menu.
 
 ## Configuration
 
@@ -146,7 +149,11 @@ binaural_beats = false
 binaural_preset = "gamma_experiment"
 binaural_base_hz = 220
 binaural_beat_hz = 40
-binaural_volume_percent = 8
+binaural_volume_percent = 36
+music_enabled = false
+music_source = "lofi"
+music_volume_percent = 36
+music_during_breaks = false
 theme = "auto"
 ```
 
@@ -170,8 +177,29 @@ Built-in listening modes:
 Preset names are listening modes, not promises of cognitive or health effects.
 Custom base tone changes in 10 Hz steps; beat difference changes in 1 Hz steps.
 One Custom slot persists while you try built-in presets. Editing a built-in base
-or difference copies that preset into Custom before changing it. Beat volume is
-linear gain from 1–100% and defaults to 8%.
+or difference copies that preset into Custom before changing it.
+
+Beat and music volumes are 1–100% and both default to 36%. The two channels
+are loudness-calibrated to a shared reference, so the same percentage
+produces the same output level on either slider (100% ≈ −16 dBFS RMS).
+
+### Lofi music
+
+Set `music_enabled = true` in the Audio settings overlay (or press `b` on
+the timer screen) to layer endless generative lofi music under the beats —
+mellow e-piano chords, soft bass, gentle percussion, and vinyl crackle,
+synthesized on the fly with no audio files or network. Music has its own
+volume (loudness-matched to the beats — equal percentages sound equally
+loud), plays with or without the beats, and follows the same rules: unpaused
+Work phases only, unless `music_during_breaks = true` keeps it going through
+breaks (the beats stay work-only).
+
+The music matches whatever the beats are doing. The preset sets the mood —
+focus and gamma presets get brighter, more rhythmic backing; Calm
+concentration and Meditative get sparser, softer; Wind-down turns ambient and
+drumless. The key follows the base tone and the tempo is derived from the
+beat difference, so nothing clashes with the tones. Every session is a fresh
+performance that never audibly loops.
 
 Headphones are required for the binaural effect. Start at a safe volume and
 stop listening if sound becomes uncomfortable. Audio-device failures are

@@ -143,8 +143,13 @@ fn audio_detail(app: &App) -> String {
     } else {
         "off"
     };
+    let music = if app.config.music_enabled {
+        "music on"
+    } else {
+        "music off"
+    };
     format!(
-        "{state} · {} · {}/{} Hz · {} Hz · {}%",
+        "{state} · {} · {}/{} Hz · {} Hz · {}% · {music}",
         app.config.binaural_preset,
         settings.base_hz,
         settings.base_hz + settings.beat_hz,
@@ -180,11 +185,16 @@ fn render_audio_menu(
 
     frame.render_widget(
         Paragraph::new(format!(
-            "{}/{} Hz · {} Hz difference · {}% volume{}",
+            "{}/{} Hz · {} Hz difference · {}% volume · music {}{}",
             settings.base_hz,
             settings.base_hz + settings.beat_hz,
             settings.beat_hz,
             settings.volume_percent,
+            if app.config.music_enabled {
+                format!("{}%", app.config.music_volume_percent)
+            } else {
+                "off".to_string()
+            },
             if preview { " · previewing" } else { "" },
         ))
         .style(Style::default().fg(if preview { palette.work } else { palette.muted }))
@@ -192,16 +202,16 @@ fn render_audio_menu(
         rows[1],
     );
 
+    let on_off = |enabled: bool| if enabled { "on" } else { "off" }.to_string();
     let values = [
-        if app.config.binaural_beats {
-            "on".to_string()
-        } else {
-            "off".to_string()
-        },
+        on_off(app.config.binaural_beats),
         app.config.binaural_preset.to_string(),
         format!("{} Hz", settings.base_hz),
         format!("{} Hz", settings.beat_hz),
         format!("{}%", settings.volume_percent),
+        on_off(app.config.music_enabled),
+        format!("{}%", app.config.music_volume_percent),
+        on_off(app.config.music_during_breaks),
     ];
     let lines: Vec<Line> = AUDIO_MENU_ITEMS
         .iter()
@@ -278,7 +288,7 @@ fn render_timer(frame: &mut Frame, app: &App, timer: &Timer, palette: Palette) {
     render_help(
         frame,
         rows[7],
-        "space pause · s skip · r reset · h/l ±1m · a audio · A audio menu · t stats · m menu · q quit",
+        "space pause · s skip · r reset · h/l ±1m · a audio · b music · A audio menu · t stats · m menu · q quit",
         palette,
     );
 }

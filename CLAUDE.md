@@ -41,8 +41,9 @@ module layout as sweet-nothings.
   timer until Enter is pressed (`App.alert`); manual skips bypass it.
   On the timer screen, `←`/`→` (or `h`/`l`) scrub the clock ±1 minute
   (`Timer::seek_back`/`seek_forward`); forward past the end finishes the
-  phase naturally on the next tick, and `a` toggles binaural audio,
-  persisting the setting to the config file like a menu adjustment.
+  phase naturally on the next tick, and `a` toggles binaural audio while
+  `b` toggles lofi music, both persisting to the config file like a menu
+  adjustment.
   `app.rs` owns the event loop (100ms tick, keyboard handling), `ui.rs`
   renders the menu, the alert banner, and the big block-digit clock,
   progress gauge, and session dots. The launch menu includes an
@@ -54,12 +55,24 @@ module layout as sweet-nothings.
   menu or `A` from the timer, which keeps ticking underneath; the overlay
   swallows all keys (they collide with timer bindings) and alerts evict
   it like they evict the stats overlay.
-- **`src/audio.rs`** - Best-effort stereo tone synthesis through rodio. A
-  configurable left carrier and right carrier-plus-difference tone play only
-  during preview or unpaused Work phases without an alert. Tone gain uses an
-  independent player for future music-volume support. Playback and audio-device
-  resources stop for breaks, menu visits, preview exit, and app exit. Linux uses
-  ALSA and macOS uses CoreAudio.
+- **`src/audio/`** - Best-effort audio through rodio: one shared output
+  device with independent tone and music `Player`s on its mixer.
+  `Audio::sync(AudioTargets)` reconciles both channels each tick with
+  per-channel change detection (`plan_channel`): volume-only changes re-gain
+  a player in place, anything else rebuilds only the affected channel, and
+  the device closes when both are silent. `mod.rs` holds `BinauralSource`
+  (left carrier, right carrier-plus-difference); `lofi.rs` is a procedural
+  lofi engine (`LofiSource`) — seeded SplitMix64 randomness over precomposed
+  chord progressions with e-piano plucks, bass, kick, hats, and vinyl
+  crackle, all synthesized (no assets/decoders). `MusicParams::derive` maps
+  preset → mood (bright/soft/ambient) and tone settings → key/tempo. Both
+  channels are loudness-calibrated to `REFERENCE_RMS` (−16 dBFS at 100%
+  volume) — the tone scales its sine to it, the music drives a tanh
+  saturator to it — so equal volume percentages sound equally loud. Tones
+  play during preview or unpaused Work phases without an alert; music adds
+  an opt-in unpaused-breaks mode. The `MusicSource` config enum (one `Lofi`
+  variant) is the seam for future file/API sources. Linux uses ALSA and
+  macOS uses CoreAudio.
 - **`src/theme.rs`** - Persisted theme preference, terminal background
   and true-color capability detection, plus semantic light/dark color palettes
   with ANSI fallbacks used by every TUI screen.
@@ -76,7 +89,8 @@ module layout as sweet-nothings.
   interrupt the timer.
 - **`src/config/`** - XDG config (`~/.config/focus-fox/config.toml`, TOML,
   humantime durations), including opt-in binaural playback, preset selection,
-  persistent Custom frequencies, and beat volume. Legacy difference-only audio
+  persistent Custom frequencies, beat volume, and lofi music (enable toggle,
+  `MusicSource`, volume, play-during-breaks). Legacy difference-only audio
   configs migrate during deserialization. CLI args override file values via
   `merge_args`.
 - **`src/cli/`** - Clap argument parsing.
