@@ -4,11 +4,11 @@ use anyhow::Result;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
-use crate::audio::Audio;
+use crate::audio::{Audio, AudioTargets};
 use crate::config::{
     BINAURAL_BASE_STEP_HZ, Config, MAX_BINAURAL_BASE_HZ, MAX_BINAURAL_BEAT_HZ,
-    MAX_BINAURAL_VOLUME_PERCENT, MIN_BINAURAL_BASE_HZ, MIN_BINAURAL_BEAT_HZ,
-    MIN_BINAURAL_VOLUME_PERCENT, ToneSettings,
+    MAX_BINAURAL_VOLUME_PERCENT, MAX_MUSIC_VOLUME_PERCENT, MIN_BINAURAL_BASE_HZ,
+    MIN_BINAURAL_BEAT_HZ, MIN_BINAURAL_VOLUME_PERCENT, MIN_MUSIC_VOLUME_PERCENT,
 };
 use crate::notify;
 use crate::stats::{Record, Summary, store::Store};
@@ -29,12 +29,15 @@ pub const MENU_ITEMS: [&str; 8] = [
     "Theme",
 ];
 
-pub const AUDIO_MENU_ITEMS: [&str; 5] = [
-    "Enabled",
+pub const AUDIO_MENU_ITEMS: [&str; 8] = [
+    "Beats enabled",
     "Tone preset",
     "Base tone",
     "Beat difference",
     "Beat volume",
+    "Music",
+    "Music volume",
+    "Music in breaks",
 ];
 
 pub enum Screen {
@@ -258,6 +261,18 @@ impl App {
                     );
                     self.save_config();
                 }
+                KeyCode::Char('b') => {
+                    self.config.music_enabled = !self.config.music_enabled;
+                    self.status = Some(
+                        if self.config.music_enabled {
+                            "music on"
+                        } else {
+                            "music off"
+                        }
+                        .to_string(),
+                    );
+                    self.save_config();
+                }
                 KeyCode::Char('A') => self.open_audio_view(),
                 KeyCode::Char('m') => self.screen = Screen::Menu { selected: 0 },
                 _ => {}
@@ -349,6 +364,14 @@ impl App {
                     i64::from(MAX_BINAURAL_VOLUME_PERCENT),
                 ) as u8;
             }
+            5 => c.music_enabled = !c.music_enabled,
+            6 => {
+                c.music_volume_percent = (i64::from(c.music_volume_percent) + dir).clamp(
+                    i64::from(MIN_MUSIC_VOLUME_PERCENT),
+                    i64::from(MAX_MUSIC_VOLUME_PERCENT),
+                ) as u8;
+            }
+            7 => c.music_during_breaks = !c.music_during_breaks,
             _ => {}
         }
         self.save_config();
@@ -379,28 +402,33 @@ impl App {
     }
 
     /// Audio follows timer state rather than wall-clock events. This covers
-    /// menu returns, pauses, skips, phase changes, alerts, and every exit path.
-    fn audio_target(&self) -> Option<ToneSettings> {
+    /// menu returns, pauses, skips, phase changes, alerts, and every exit
+    /// path. Preview plays both channels regardless of the enable toggles —
+    /// the overlay is where the mix gets balanced. Tones are work-only;
+    /// music can opt in to unpaused breaks.
+    fn audio_target(&self) -> AudioTargets {
         if self.should_quit || self.alert.is_some() {
-            return None;
+            return AudioTargets::default();
         }
-        if self.audio_view.as_ref().is_some_and(|view| view.preview) {
-            return Some(self.config.tone_settings());
-        }
-        if !self.config.binaural_beats {
-            return None;
-        }
-        match &self.screen {
-            Screen::Timer(timer) if timer.phase == Phase::Work && !timer.paused => {
-                Some(self.config.tone_settings())
+        let preview = self.audio_view.as_ref().is_some_and(|view| view.preview);
+        let (work, on_break) = match &self.screen {
+            Screen::Timer(timer) if !timer.paused => {
+                (timer.phase == Phase::Work, timer.phase != Phase::Work)
             }
-            Screen::Menu { .. } | Screen::Timer(_) => None,
-        }
+            Screen::Menu { .. } | Screen::Timer(_) => (false, false),
+        };
+        let tone =
+            (preview || (self.config.binaural_beats && work)).then(|| self.config.tone_settings());
+        let music = (preview
+            || (self.config.music_enabled
+                && (work || (self.config.music_during_breaks && on_break))))
+        .then(|| self.config.music_settings());
+        AudioTargets { tone, music }
     }
 
     fn sync_audio(&mut self) {
-        let target = self.audio_target();
-        if let Err(err) = self.audio.sync(target) {
+        let targets = self.audio_target();
+        if let Err(err) = self.audio.sync(targets) {
             self.status = Some(format!("audio unavailable: {err}"));
         }
     }
@@ -560,20 +588,94 @@ mod tests {
         let mut app = app_on_timer(false);
         app.config.binaural_beats = true;
         let settings = app.config.tone_settings();
-        assert_eq!(app.audio_target(), Some(settings));
+        assert_eq!(app.audio_target().tone, Some(settings));
 
         app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
-        assert_eq!(app.audio_target(), None);
+        assert_eq!(app.audio_target().tone, None);
         app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
-        assert_eq!(app.audio_target(), Some(settings));
+        assert_eq!(app.audio_target().tone, Some(settings));
 
         app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
-        assert_eq!(app.audio_target(), None);
+        assert_eq!(app.audio_target().tone, None);
         app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
-        assert_eq!(app.audio_target(), Some(settings));
+        assert_eq!(app.audio_target().tone, Some(settings));
 
         app.handle_key(KeyCode::Char('m'), KeyModifiers::NONE);
-        assert_eq!(app.audio_target(), None);
+        assert_eq!(app.audio_target().tone, None);
+    }
+
+    #[test]
+    fn music_target_follows_work_and_optionally_breaks() {
+        let mut app = app_on_timer(false);
+        app.config.music_enabled = true;
+        let settings = app.config.music_settings();
+        assert_eq!(app.audio_target().music, Some(settings));
+        // Beats stay off; music plays on its own.
+        assert_eq!(app.audio_target().tone, None);
+
+        // Pause silences music.
+        app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target().music, None);
+        app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
+
+        // Skip to the break: silent by default, playing once opted in.
+        app.handle_key(KeyCode::Char('s'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target().music, None);
+        app.config.music_during_breaks = true;
+        assert_eq!(app.audio_target().music, Some(app.config.music_settings()));
+
+        // A paused break is silent even with break music on.
+        app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
+        assert_eq!(app.audio_target().music, None);
+    }
+
+    #[test]
+    fn alert_silences_break_music_too() {
+        let mut app = app_on_timer(true);
+        app.config.music_enabled = true;
+        app.config.music_during_breaks = true;
+        app.advance_clock(Duration::from_secs(10)); // work ends -> alert
+        assert!(app.alert.is_some());
+        assert_eq!(app.audio_target(), AudioTargets::default());
+
+        // Dismissing the alert starts the break, and break music with it.
+        app.handle_key(KeyCode::Enter, KeyModifiers::NONE);
+        assert_eq!(app.audio_target().music, Some(app.config.music_settings()));
+    }
+
+    #[test]
+    fn b_toggles_music_from_the_timer_screen() {
+        let mut app = app_on_timer(false);
+        assert!(!app.config.music_enabled);
+
+        app.handle_key(KeyCode::Char('b'), KeyModifiers::NONE);
+        assert!(app.config.music_enabled);
+        assert_eq!(app.status.as_deref(), Some("music on"));
+        assert_eq!(app.audio_target().music, Some(app.config.music_settings()));
+
+        app.handle_key(KeyCode::Char('b'), KeyModifiers::NONE);
+        assert!(!app.config.music_enabled);
+        assert_eq!(app.status.as_deref(), Some("music off"));
+        assert_eq!(app.audio_target().music, None);
+    }
+
+    #[test]
+    fn music_menu_rows_toggle_and_clamp() {
+        let mut app = App::new(Config::default(), None, ThemeMode::Dark, false);
+
+        app.adjust_audio(5, 1);
+        assert!(app.config.music_enabled);
+        app.adjust_audio(7, 1);
+        assert!(app.config.music_during_breaks);
+
+        app.config.music_volume_percent = MAX_MUSIC_VOLUME_PERCENT;
+        app.adjust_audio(6, 1);
+        assert_eq!(app.config.music_volume_percent, MAX_MUSIC_VOLUME_PERCENT);
+        app.config.music_volume_percent = MIN_MUSIC_VOLUME_PERCENT;
+        app.adjust_audio(6, -1);
+        assert_eq!(app.config.music_volume_percent, MIN_MUSIC_VOLUME_PERCENT);
+        app.adjust_audio(6, 1);
+        assert_eq!(app.config.music_volume_percent, MIN_MUSIC_VOLUME_PERCENT + 1);
     }
 
     #[test]
@@ -584,12 +686,12 @@ mod tests {
         app.handle_key(KeyCode::Char('a'), KeyModifiers::NONE);
         assert!(app.config.binaural_beats);
         assert_eq!(app.status.as_deref(), Some("audio on"));
-        assert_eq!(app.audio_target(), Some(app.config.tone_settings()));
+        assert_eq!(app.audio_target().tone, Some(app.config.tone_settings()));
 
         app.handle_key(KeyCode::Char('a'), KeyModifiers::NONE);
         assert!(!app.config.binaural_beats);
         assert_eq!(app.status.as_deref(), Some("audio off"));
-        assert_eq!(app.audio_target(), None);
+        assert_eq!(app.audio_target().tone, None);
     }
 
     #[test]
@@ -598,27 +700,30 @@ mod tests {
         app.config.binaural_beats = true;
         app.advance_clock(Duration::from_secs(10));
         assert!(app.alert.is_some());
-        assert_eq!(app.audio_target(), None);
+        assert_eq!(app.audio_target(), AudioTargets::default());
 
         app.handle_key(KeyCode::Char('q'), KeyModifiers::NONE);
-        assert_eq!(app.audio_target(), None);
+        assert_eq!(app.audio_target(), AudioTargets::default());
     }
 
     #[test]
     fn preview_works_while_disabled_and_stops_when_overlay_closes() {
         let mut app = App::new(Config::default(), None, ThemeMode::Dark, false);
         assert!(!app.config.binaural_beats);
+        assert!(!app.config.music_enabled);
         app.handle_key(KeyCode::Char('a'), KeyModifiers::NONE);
         app.handle_key(KeyCode::Char('p'), KeyModifiers::NONE);
-        assert_eq!(app.audio_target(), Some(app.config.tone_settings()));
+        // Preview plays both channels so the mix can be balanced.
+        assert_eq!(app.audio_target().tone, Some(app.config.tone_settings()));
+        assert_eq!(app.audio_target().music, Some(app.config.music_settings()));
 
         app.config.binaural_volume_percent = 31;
-        assert_eq!(app.audio_target().unwrap().volume_percent, 31);
+        assert_eq!(app.audio_target().tone.unwrap().volume_percent, 31);
 
         app.handle_key(KeyCode::Esc, KeyModifiers::NONE);
         assert!(app.audio_view.is_none());
         assert!(matches!(app.screen, Screen::Menu { .. }));
-        assert_eq!(app.audio_target(), None);
+        assert_eq!(app.audio_target(), AudioTargets::default());
         assert!(!app.should_quit);
     }
 
@@ -690,7 +795,7 @@ mod tests {
         app.advance_clock(Duration::from_secs(3));
         assert_eq!(remaining(&app), Duration::from_secs(7));
         // Work audio keeps playing while settings are adjusted live.
-        assert_eq!(app.audio_target(), Some(app.config.tone_settings()));
+        assert_eq!(app.audio_target().tone, Some(app.config.tone_settings()));
     }
 
     #[test]
