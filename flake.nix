@@ -80,8 +80,35 @@
           ];
         });
 
-        # binary shipped in release assets: static on linux, native on darwin
-        releaseBin = if isLinux then static else unwrapped;
+        # Downloadable darwin binaries run outside the Nix store, but the Nix
+        # build links libiconv from the store, so the tarball crashed at dyld
+        # load time on any Mac without that exact store path. Rewrite the load
+        # command to the copy every macOS ships in /usr/lib. On aarch64-darwin
+        # the stdenv's install_name_tool wrapper re-signs after the edit.
+        portableDarwin = unwrapped.overrideAttrs (old: {
+          postFixup = (old.postFixup or "") + ''
+            for bin in $out/bin/*; do
+              otool -L "$bin" | awk '/\/nix\/store\/.*libiconv/ { print $1 }' |
+                while read -r ref; do
+                  install_name_tool -change "$ref" /usr/lib/libiconv.2.dylib "$bin"
+                done
+              # tail: otool's first line is the inspected binary's own
+              # (store) path, not a load command
+              if otool -L "$bin" | tail -n +2 | grep /nix/store; then
+                echo "error: $bin still links against the Nix store" >&2
+                exit 1
+              fi
+            done
+          '';
+          # Fail the build if any store path (linked or embedded) leaks back
+          # into the supposedly relocatable release binary.
+          disallowedReferences = (old.disallowedReferences or [ ]) ++ [
+            pkgs.libiconv
+          ];
+        });
+
+        # binary shipped in release assets: static on linux, relinked on darwin
+        releaseBin = if isLinux then static else portableDarwin;
 
         tarball = pkgs.runCommand "focus-fox-${version}-tarball" { } ''
           mkdir -p $out
