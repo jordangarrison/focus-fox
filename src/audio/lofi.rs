@@ -29,7 +29,13 @@ const CRACKLE_GAIN: f32 = 0.065;
 // binaural tone produces at equal volume. tanh bounds every sample within
 // ±1 no matter what the voices sum to, while gently squashing kick and
 // chord transients the way tape would.
-const SATURATOR_DRIVE: f32 = 5.8;
+const SATURATOR_DRIVE: f32 = 8.0;
+
+// Post-saturator peak ceiling. The tone and music sum on one mixer with no
+// limiter downstream, so the music's peak must leave room for the tone's:
+// MUSIC_PEAK_CEILING + TONE_AMPLITUDE < 1.0 keeps the worst-case sum (both
+// channels at 100%) below full scale. Enforced by a test.
+pub(super) const MUSIC_PEAK_CEILING: f32 = 0.77;
 
 // Tape-style pitch wobble shared by the melodic voices.
 const WOW_HZ: f64 = 0.4;
@@ -113,8 +119,10 @@ impl MusicParams {
             root_midi -= 12;
         }
 
-        // Octave-fold the beat frequency into lofi tempo territory.
-        let mut bpm = f32::from(settings.beat_hz);
+        // Octave-fold the beat frequency into lofi tempo territory. The
+        // config layer clamps beat_hz to ≥1, but guard locally too — a zero
+        // would never leave this loop.
+        let mut bpm = f32::from(settings.beat_hz.max(1));
         while bpm < 45.0 {
             bpm *= 2.0;
         }
@@ -274,11 +282,14 @@ impl Pluck {
         if self.attack_left > 0 {
             self.attack_left -= 1;
             self.env = (self.env + self.attack_inc).min(self.peak);
+        } else if self.env < 1e-5 {
+            // Flush before the multiply: a decaying-forever envelope would
+            // stall in the subnormal range and grind denormal arithmetic on
+            // the audio thread.
+            self.env = 0.0;
+            return 0.0;
         } else {
             self.env *= self.decay;
-        }
-        if self.env < 1e-5 {
-            return 0.0;
         }
         // Fundamental plus a touch of second harmonic ≈ a mellow e-piano;
         // normalized so the waveform stays within ±1.
@@ -313,11 +324,12 @@ impl KickDrum {
         if self.attack_left > 0 {
             self.attack_left -= 1;
             self.env = (self.env + 1.0 / (0.002 * SAMPLE_RATE as f32)).min(1.0);
+        } else if self.env < 1e-5 {
+            // Flush before the multiply — see Pluck::sample.
+            self.env = 0.0;
+            return 0.0;
         } else {
             self.env *= self.decay;
-        }
-        if self.env < 1e-5 {
-            return 0.0;
         }
         let wave = self.phase.sin() as f32;
         self.phase = (self.phase + self.step).rem_euclid(TAU);
@@ -591,8 +603,8 @@ impl LofiSource {
         self.lowpass_l += self.lowpass_k * (left - self.lowpass_l);
         self.lowpass_r += self.lowpass_k * (right - self.lowpass_r);
         (
-            (self.lowpass_l * SATURATOR_DRIVE).tanh(),
-            (self.lowpass_r * SATURATOR_DRIVE).tanh(),
+            (self.lowpass_l * SATURATOR_DRIVE).tanh() * MUSIC_PEAK_CEILING,
+            (self.lowpass_r * SATURATOR_DRIVE).tanh() * MUSIC_PEAK_CEILING,
         )
     }
 }
@@ -681,7 +693,8 @@ mod tests {
 
     #[test]
     fn bpm_folds_into_lofi_range() {
-        for beat_hz in [1u16, 3, 6, 18, 40, 100] {
+        // 0 is below the config clamp but must not hang the fold.
+        for beat_hz in [0u16, 1, 3, 6, 18, 40, 100] {
             let derived = MusicParams::derive(settings(BinauralPreset::Custom, 220, beat_hz), 1);
             assert!(
                 (60.0..=88.0).contains(&derived.bpm),
@@ -750,10 +763,13 @@ mod tests {
             for seed in [1u64, 99] {
                 let mut source = LofiSource::new(params(preset, seed));
                 let frames = SAMPLE_RATE as usize * 20;
-                // tanh bounds every sample below ±1 regardless of what the
-                // voices sum to.
+                // tanh bounds every sample below the ceiling regardless of
+                // what the voices sum to.
                 assert!(
-                    source.by_ref().take(frames * 2).all(|s| s.abs() < 0.99),
+                    source
+                        .by_ref()
+                        .take(frames * 2)
+                        .all(|s| s.abs() < MUSIC_PEAK_CEILING),
                     "{preset:?} seed {seed} exceeded headroom"
                 );
             }

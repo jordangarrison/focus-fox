@@ -25,6 +25,10 @@ pub(crate) const REFERENCE_RMS: f32 = 0.158;
 /// Sine amplitude whose RMS equals `REFERENCE_RMS`.
 const TONE_AMPLITUDE: f32 = REFERENCE_RMS * std::f32::consts::SQRT_2;
 
+// Both channels at 100% volume sum on one mixer with no limiter downstream;
+// their combined peak must stay below full scale.
+const _: () = assert!(TONE_AMPLITUDE + lofi::MUSIC_PEAK_CEILING < 1.0);
+
 /// Everything the audio layer should be playing right now. `None` per
 /// channel means silence for that channel.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -138,7 +142,7 @@ impl Audio {
     }
 
     fn sync_music(&mut self, prev: Option<MusicSettings>, next: Option<MusicSettings>) {
-        match plan_channel(prev, next, self.music_player.is_some(), MusicSettings::same_track) {
+        match plan_channel(prev, next, self.music_player.is_some(), same_performance) {
             ChannelAction::Stop => self.music_player = None,
             ChannelAction::SetVolume => {
                 let settings = next.expect("SetVolume implies a target");
@@ -185,6 +189,15 @@ impl Drop for Audio {
 fn fresh_seed() -> u64 {
     use std::hash::{BuildHasher, RandomState};
     RandomState::new().hash_one(0u64)
+}
+
+/// Musically meaningful identity for the music channel: settings changes
+/// that derive the same performance (same source, mood, key, and tempo —
+/// e.g. a beat-difference nudge inside one BPM plateau, or a volume change)
+/// keep the current track playing; only real musical changes rebuild it.
+fn same_performance(prev: MusicSettings, next: MusicSettings) -> bool {
+    prev.source == next.source
+        && MusicParams::derive(prev, 0) == MusicParams::derive(next, 0)
 }
 
 /// Infinite interleaved stereo source: carrier in the left ear, carrier plus
@@ -258,6 +271,42 @@ impl Source for BinauralSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn same_performance_ignores_musically_meaningless_changes() {
+        use crate::config::BinauralPreset;
+        let base = MusicSettings {
+            source: MusicSource::Lofi,
+            preset: BinauralPreset::Custom,
+            base_hz: 220,
+            beat_hz: 23,
+            volume_percent: 40,
+        };
+        // beat_hz 23–30 all fold to the same BPM plateau: keep playing.
+        let nudged = MusicSettings {
+            beat_hz: 24,
+            ..base
+        };
+        assert!(same_performance(base, nudged));
+        // Volume changes never restart the track.
+        let louder = MusicSettings {
+            volume_percent: 90,
+            ..base
+        };
+        assert!(same_performance(base, louder));
+        // A real tempo change rebuilds.
+        let retimed = MusicSettings {
+            beat_hz: 40,
+            ..base
+        };
+        assert!(!same_performance(base, retimed));
+        // A mood change rebuilds.
+        let calmer = MusicSettings {
+            preset: BinauralPreset::WindDown,
+            ..base
+        };
+        assert!(!same_performance(base, calmer));
+    }
 
     #[test]
     fn plan_channel_covers_every_transition() {

@@ -66,19 +66,6 @@ pub struct MusicSettings {
     pub volume_percent: u8,
 }
 
-impl MusicSettings {
-    /// True when only the volume differs, so the track can keep playing with a
-    /// gain change instead of restarting.
-    pub fn same_track(self, other: Self) -> bool {
-        Self {
-            volume_percent: 0,
-            ..self
-        } == Self {
-            volume_percent: 0,
-            ..other
-        }
-    }
-}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -516,19 +503,7 @@ alert_screen = true
     }
 
     #[test]
-    fn same_track_and_same_tone_ignore_volume_only() {
-        let music = Config::default().music_settings();
-        let louder = MusicSettings {
-            volume_percent: 90,
-            ..music
-        };
-        let retuned = MusicSettings {
-            beat_hz: music.beat_hz + 1,
-            ..music
-        };
-        assert!(music.same_track(louder));
-        assert!(!music.same_track(retuned));
-
+    fn same_tone_ignores_volume_only() {
         let tone = Config::default().tone_settings();
         let louder = ToneSettings {
             volume_percent: 90,

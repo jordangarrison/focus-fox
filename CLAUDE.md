@@ -49,8 +49,10 @@ module layout as sweet-nothings.
   progress gauge, and session dots. The launch menu includes an
   `auto`/`dark`/`light` theme preference; `auto` resolves the terminal
   background once before Ratatui starts. Audio settings — opt-in binaural
-  playback, named listening-mode presets, one persistent Custom tone,
-  linear volume, and preview — live in a full-frame overlay
+  playback ("Beats enabled"), named listening-mode presets, one persistent
+  Custom tone, per-channel volumes, the lofi music toggle and its
+  play-during-breaks option, and preview (which plays both channels) —
+  live in a full-frame overlay
   (`App.audio_view`, like `stats_view`) opened with `a`/Enter from the
   menu or `A` from the timer, which keeps ticking underneath; the overlay
   swallows all keys (they collide with timer bindings) and alerts evict
@@ -70,7 +72,9 @@ module layout as sweet-nothings.
   volume) — the tone scales its sine to it, the music drives a tanh
   saturator to it — so equal volume percentages sound equally loud. Tones
   play during preview or unpaused Work phases without an alert; music adds
-  an opt-in unpaused-breaks mode. The `MusicSource` config enum (one `Lofi`
+  an opt-in unpaused-breaks mode. Audio is a pure function of app state:
+  pausing silences everything and resuming starts a fresh music
+  performance (a deliberate simplicity trade-off). The `MusicSource` config enum (one `Lofi`
   variant) is the seam for future file/API sources. Linux uses ALSA and
   macOS uses CoreAudio.
 - **`src/theme.rs`** - Persisted theme preference, terminal background

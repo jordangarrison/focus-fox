@@ -108,8 +108,8 @@ Audio settings (overlay over the menu or the timer):
 | `p`           | toggle live preview           |
 | `Enter`/`Esc`/`A` | close the overlay          |
 
-Preview plays both the tones and the music (when configured) even when
-playback is disabled, so you can balance the two volumes. It stops when you
+Preview plays both the tones and the music even when playback is disabled,
+so you can balance the two volumes. It stops when you
 close the overlay or quit. Opened from the timer, the clock keeps ticking
 underneath and work audio keeps playing, so you can adjust the tone live.
 
@@ -182,6 +182,10 @@ or difference copies that preset into Custom before changing it.
 Beat and music volumes are 1–100% and both default to 36%. The two channels
 are loudness-calibrated to a shared reference, so the same percentage
 produces the same output level on either slider (100% ≈ −16 dBFS RMS).
+
+Upgrading from 0.6 or earlier: volumes now live on this calibrated scale, so
+a stored `binaural_volume_percent` keeps its number but plays quieter than it
+used to — raise an old `8` to about `36` for the previous loudness.
 
 ### Lofi music
 
