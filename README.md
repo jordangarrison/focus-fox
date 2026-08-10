@@ -14,12 +14,12 @@ https://github.com/user-attachments/assets/f23047f1-1f3f-43b7-acb8-57365687cf3a
 
 ## Screenshots
 
-| Menu | Focus session |
-|------|---------------|
+| Menu                                              | Focus session                                                  |
+|---------------------------------------------------|----------------------------------------------------------------|
 | ![Configuration menu](assets/screenshot-menu.png) | ![Focus timer with progress ring](assets/screenshot-focus.png) |
 
-| Phase transition | Break |
-|------------------|-------|
+| Phase transition                                                 | Break                                       |
+|------------------------------------------------------------------|---------------------------------------------|
 | ![Alert screen between phases](assets/screenshot-transition.png) | ![Break timer](assets/screenshot-break.png) |
 
 ## Install
@@ -34,14 +34,14 @@ Intel macOS is not supported.
 
 Or grab a package from the [latest release](https://github.com/jordangarrison/focus-fox/releases/latest):
 
-| Platform | Asset |
-|----------|-------|
-| Debian / Ubuntu | `focus-fox_*.deb` — `sudo dpkg -i focus-fox_*.deb` |
-| Fedora / RHEL | `focus-fox-*.rpm` — `sudo rpm -i focus-fox-*.rpm` |
-| Arch | `focus-fox-*.pkg.tar.zst` — `sudo pacman -U focus-fox-*.pkg.tar.zst` |
-| Any Linux (static) | `focus-fox-*-linux.tar.gz` — untar and drop `fox` on your `PATH` |
+| Platform              | Asset                                                                     |
+|-----------------------|---------------------------------------------------------------------------|
+| Debian / Ubuntu       | `focus-fox_*.deb` — `sudo dpkg -i focus-fox_*.deb`                        |
+| Fedora / RHEL         | `focus-fox-*.rpm` — `sudo rpm -i focus-fox-*.rpm`                         |
+| Arch                  | `focus-fox-*.pkg.tar.zst` — `sudo pacman -U focus-fox-*.pkg.tar.zst`      |
+| Any Linux (static)    | `focus-fox-*-linux.tar.gz` — untar and drop `fox` on your `PATH`          |
 | macOS (Apple Silicon) | `focus-fox-*-aarch64-darwin.tar.gz` — untar and drop `fox` on your `PATH` |
-| Nix | see [Nix](#nix) below |
+| Nix                   | see [Nix](#nix) below                                                     |
 
 Windows: use WSL with any of the Linux options.
 
@@ -78,6 +78,44 @@ declare their distribution's ALSA configuration package. When installing the
 standalone Linux tarball, make sure ALSA runtime data is installed (normally
 provided by `libasound2-data` or `alsa-lib`).
 
+## Launch from a hotkey or app icon
+
+Focus Fox is a terminal app, but you don't have to open a terminal by hand.
+Tell your launcher to run your terminal with `focus-fox` as the command:
+
+| Terminal       | Command                                           |
+|----------------|---------------------------------------------------|
+| Alacritty      | `alacritty --title "Focus Fox" -e focus-fox`      |
+| kitty          | `kitty --title "Focus Fox" focus-fox`             |
+| Ghostty        | `ghostty --title="Focus Fox" -e focus-fox`        |
+| WezTerm        | `wezterm start -- focus-fox`                      |
+| foot           | `foot --title "Focus Fox" focus-fox`              |
+| GNOME Terminal | `gnome-terminal --title "Focus Fox" -- focus-fox` |
+| Konsole        | `konsole -e focus-fox`                            |
+
+### Linux
+
+**Hotkey:** bind one of the commands above to a custom keyboard shortcut.
+
+- GNOME: Settings → Keyboard → View and Customize Shortcuts → Custom
+  Shortcuts → `+`
+- KDE Plasma: System Settings → Keyboard → Shortcuts → Add New → Command
+
+**App icon:** copy [`contrib/focus-fox.desktop`](contrib/focus-fox.desktop)
+to `~/.local/share/applications/` and set its `Exec` line to your terminal
+(the file lists the alternatives). Focus Fox then appears in your app grid
+and can be pinned to the dock or panel. The example names a terminal
+directly on purpose: the generic `Terminal=true` key is handled
+inconsistently across GNOME, KDE, and XFCE.
+
+### macOS
+
+**Raycast:** [`contrib/raycast/focus-fox.sh`](contrib/raycast/focus-fox.sh)
+is a ready-made script command that opens Focus Fox in a new Terminal
+window (with an iTerm2 variant in a comment). Add its folder in Raycast →
+Settings → Extensions → Script Commands → Add Directories, then launch it
+from Raycast or give it a hotkey there.
+
 ## Usage
 
 ```bash
@@ -100,24 +138,25 @@ overlay, reachable from both the launch menu and the running timer.
 
 Menu (launch screen):
 
-| Key           | Action                        |
-|---------------|-------------------------------|
-| `↑`/`↓`, `k`/`j` | select setting             |
-| `←`/`→`, `h`/`l` | adjust value               |
-| `Enter`       | start timer, or open Audio settings |
-| `a`           | open Audio settings           |
-| `q`/`Esc`     | quit                          |
+| Key              | Action                              |
+|------------------|-------------------------------------|
+| `↑`/`↓`, `k`/`j` | select setting                      |
+| `←`/`→`, `h`/`l` | adjust value                        |
+| `Enter`          | start timer, or open Audio settings |
+| `a`              | open Audio settings                 |
+| `q`/`Esc`        | quit                                |
+|                  |                                     |
 
 Menu changes are saved automatically and persist between app starts.
 
 Audio settings (overlay over the menu or the timer):
 
-| Key           | Action                        |
-|---------------|-------------------------------|
-| `↑`/`↓`, `k`/`j` | select setting             |
-| `←`/`→`, `h`/`l` | adjust value               |
-| `p`           | toggle live preview           |
-| `Enter`/`Esc`/`A` | close the overlay          |
+| Key               | Action              |
+|-------------------|---------------------|
+| `↑`/`↓`, `k`/`j`  | select setting      |
+| `←`/`→`, `h`/`l`  | adjust value        |
+| `p`               | toggle live preview |
+| `Enter`/`Esc`/`A` | close the overlay   |
 
 Preview plays both the tones and the music even when playback is disabled,
 so you can balance the two volumes. It stops when you
@@ -126,18 +165,18 @@ underneath and work audio keeps playing, so you can adjust the tone live.
 
 Timer:
 
-| Key         | Action                      |
-|-------------|-----------------------------|
-| `space`/`p` | pause / resume              |
-| `s`         | skip to next phase          |
-| `r`         | restart this phase          |
-| `←`/`→`, `h`/`l` | jump back / forward 1m |
-| `a`         | toggle binaural audio       |
-| `b`         | toggle lofi music           |
-| `A`         | Audio settings overlay      |
-| `t`         | stats overlay (`t`/`Esc` closes) |
-| `m`         | back to the menu            |
-| `q`/`Esc`   | quit                        |
+| Key              | Action                           |
+|------------------|----------------------------------|
+| `space`/`p`      | pause / resume                   |
+| `s`              | skip to next phase               |
+| `r`              | restart this phase               |
+| `←`/`→`, `h`/`l` | jump back / forward 1m           |
+| `a`              | toggle binaural audio            |
+| `b`              | toggle lofi music                |
+| `A`              | Audio settings overlay           |
+| `t`              | stats overlay (`t`/`Esc` closes) |
+| `m`              | back to the menu                 |
+| `q`/`Esc`        | quit                             |
 
 Jumping forward past the end finishes the phase as if it ran out
 naturally; jumping back stops at the start of the phase. Toggling audio
@@ -175,15 +214,15 @@ experiment preset.
 
 Built-in listening modes:
 
-| Preset | Left / right tones | Difference |
-|--------|--------------------|------------|
-| Active focus | 220 / 238 Hz | 18 Hz |
-| Gamma experiment | 220 / 260 Hz | 40 Hz |
-| Research gamma | 320 / 360 Hz | 40 Hz |
-| Calm concentration | 220 / 230 Hz | 10 Hz |
-| Meditative | 220 / 226 Hz | 6 Hz |
-| Wind-down | 160 / 163 Hz | 3 Hz |
-| Custom | 100–1000 Hz base | 1–100 Hz |
+| Preset             | Left / right tones | Difference |
+|--------------------|--------------------|------------|
+| Active focus       | 220 / 238 Hz       | 18 Hz      |
+| Gamma experiment   | 220 / 260 Hz       | 40 Hz      |
+| Research gamma     | 320 / 360 Hz       | 40 Hz      |
+| Calm concentration | 220 / 230 Hz       | 10 Hz      |
+| Meditative         | 220 / 226 Hz       | 6 Hz       |
+| Wind-down          | 160 / 163 Hz       | 3 Hz       |
+| Custom             | 100–1000 Hz base   | 1–100 Hz   |
 
 Preset names are listening modes, not promises of cognitive or health effects.
 Custom base tone changes in 10 Hz steps; beat difference changes in 1 Hz steps.
