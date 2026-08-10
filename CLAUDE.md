@@ -109,6 +109,11 @@ commit:
   section are the user-facing reference; keep them in sync.
 - **The in-app help line** in `src/tui/ui.rs` (`render_help` calls).
 - **This file** — the Module Structure descriptions above.
+- **`contrib/`** — the example `.desktop` entry and macOS Raycast script
+  referenced from the README's "Launch from a hotkey or app icon" section.
+  Keep their launch commands in sync with the README table. (Background:
+  `docs/standalone-app-research.md` — a windowed-app build was evaluated
+  and rejected in favor of these docs.)
 
 ## Releases
 

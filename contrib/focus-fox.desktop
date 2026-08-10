@@ -1,0 +1,38 @@
+# Example desktop entry for Focus Fox.
+#
+# Install: copy this file to ~/.local/share/applications/focus-fox.desktop
+# and set the Exec line to your terminal (see the alternatives below).
+# After that, Focus Fox shows up in your app grid / launcher and can be
+# pinned to a dock or bound to a hotkey like any other app.
+#
+# Note: this file names a terminal directly instead of using Terminal=true.
+# Terminal=true is handled differently (and buggily) by GNOME, KDE, and
+# XFCE, so an explicit Exec line is the reliable option.
+#
+# The --class / --app-id flags set the window's identity to focus-fox,
+# matching StartupWMClass below. That's what makes the running window
+# group under this entry's icon instead of the terminal's. Terminals
+# without such a flag (GNOME Terminal, Konsole) still launch fine, but
+# their windows group under the terminal's own icon.
+#
+# Icon= accepts a themed icon name or an absolute path to a PNG.
+# utilities-terminal is a safe themed fallback that exists in standard
+# icon themes; point it at your own icon file if you have one.
+
+[Desktop Entry]
+Type=Application
+Name=Focus Fox
+Comment=Pomodoro timer
+Exec=alacritty --class focus-fox --title "Focus Fox" -e fox
+Terminal=false
+Icon=utilities-terminal
+Categories=Utility;Clock;
+StartupWMClass=focus-fox
+
+# Exec alternatives, pick one:
+#   Exec=kitty --class focus-fox --title "Focus Fox" fox
+#   Exec=wezterm start --class focus-fox -- fox
+#   Exec=foot --app-id focus-fox --title "Focus Fox" fox
+#   Exec=ghostty --title="Focus Fox" -e fox
+#   Exec=gnome-terminal --title "Focus Fox" -- fox
+#   Exec=konsole -e fox
