@@ -1,3 +1,6 @@
+
+
+
 # 🦊 Focus Fox
 
 A terminal-based pomodoro timer. Work sessions, short breaks, and a long
@@ -7,7 +10,7 @@ focus, and desktop notifications when phases change.
 
 ## Demo
 
-https://github.com/user-attachments/assets/59594780-4102-4dbb-92e4-9838c95530f9
+https://github.com/user-attachments/assets/f23047f1-1f3f-43b7-acb8-57365687cf3a
 
 ## Screenshots
 
