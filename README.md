@@ -81,17 +81,22 @@ provided by `libasound2-data` or `alsa-lib`).
 ## Launch from a hotkey or app icon
 
 Focus Fox is a terminal app, but you don't have to open a terminal by hand.
-Tell your launcher to run your terminal with `focus-fox` as the command:
+Tell your launcher to run your terminal with `fox` as the command (`fox` is
+the name every install method provides; `focus-fox` is the same binary):
 
-| Terminal       | Command                                           |
-|----------------|---------------------------------------------------|
-| Alacritty      | `alacritty --title "Focus Fox" -e focus-fox`      |
-| kitty          | `kitty --title "Focus Fox" focus-fox`             |
-| Ghostty        | `ghostty --title="Focus Fox" -e focus-fox`        |
-| WezTerm        | `wezterm start -- focus-fox`                      |
-| foot           | `foot --title "Focus Fox" focus-fox`              |
-| GNOME Terminal | `gnome-terminal --title "Focus Fox" -- focus-fox` |
-| Konsole        | `konsole -e focus-fox`                            |
+| Terminal       | Command                                                   |
+|----------------|-----------------------------------------------------------|
+| Alacritty      | `alacritty --class focus-fox --title "Focus Fox" -e fox`  |
+| kitty          | `kitty --class focus-fox --title "Focus Fox" fox`         |
+| Ghostty        | `ghostty --title="Focus Fox" -e fox`                      |
+| WezTerm        | `wezterm start --class focus-fox -- fox`                  |
+| foot           | `foot --app-id focus-fox --title "Focus Fox" fox`         |
+| GNOME Terminal | `gnome-terminal --title "Focus Fox" -- fox`               |
+| Konsole        | `konsole -e fox`                                          |
+
+The `--class focus-fox` / `--app-id focus-fox` flags give the window its
+own identity instead of the terminal's, which is what lets desktops group
+and pin it as Focus Fox (see the app-icon setup below).
 
 ### Linux
 
@@ -104,17 +109,22 @@ Tell your launcher to run your terminal with `focus-fox` as the command:
 **App icon:** copy [`contrib/focus-fox.desktop`](contrib/focus-fox.desktop)
 to `~/.local/share/applications/` and set its `Exec` line to your terminal
 (the file lists the alternatives). Focus Fox then appears in your app grid
-and can be pinned to the dock or panel. The example names a terminal
-directly on purpose: the generic `Terminal=true` key is handled
-inconsistently across GNOME, KDE, and XFCE.
+and can be pinned to the dock or panel. The entry sets
+`StartupWMClass=focus-fox` to match the `--class`/`--app-id` flags above,
+so the running window groups under the Focus Fox icon instead of the
+terminal's. Terminals without a class flag (GNOME Terminal, Konsole) still
+launch fine from the entry, but their windows group under the terminal's
+own icon. The example also names a terminal directly on purpose: the
+generic `Terminal=true` key is handled inconsistently across GNOME, KDE,
+and XFCE.
 
 ### macOS
 
 **Raycast:** [`contrib/raycast/focus-fox.sh`](contrib/raycast/focus-fox.sh)
-is a ready-made script command that opens Focus Fox in a new Terminal
-window (with an iTerm2 variant in a comment). Add its folder in Raycast →
-Settings → Extensions → Script Commands → Add Directories, then launch it
-from Raycast or give it a hotkey there.
+is a ready-made script command that opens Focus Fox (`fox`) in a new
+Terminal window (with an iTerm2 variant in a comment). Add its folder in
+Raycast → Settings → Extensions → Script Commands → Add Directories, then
+launch it from Raycast or give it a hotkey there.
 
 ## Usage
 

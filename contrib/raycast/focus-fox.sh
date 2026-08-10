@@ -23,7 +23,7 @@
 
 osascript <<'EOF'
 tell application "Terminal"
-	do script "focus-fox"
+	do script "fox"
 	activate
 end tell
 EOF
@@ -33,7 +33,7 @@ EOF
 # osascript <<'EOF'
 # tell application "iTerm"
 # 	create window with default profile
-# 	tell current session of current window to write text "focus-fox"
+# 	tell current session of current window to write text "fox"
 # 	activate
 # end tell
 # EOF

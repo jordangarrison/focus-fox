@@ -21,9 +21,11 @@ Focus Fox from a hotkey or app icon with the user's own terminal:
 Why: the windowed option's code was cheap but its orbit was not. A niche
 single-maintainer backend crate, egui version lockstep, a second Linux
 binary that gives up the zero-dependency static story for a hand-maintained
-dep list, an unsigned macOS .app users have to "Open Anyway," and a
-Homebrew cask that turns into a $99/yr Apple subscription after the
-September 2026 Gatekeeper deadline. Permanent complexity to put a window
+dep list, and an unsigned macOS .app users have to "Open Anyway." A cask in
+our own tap could still ship it unsigned (the September 2026 Gatekeeper
+purge only applies to the official homebrew-cask repo), but every install
+would need that manual override, and making it frictionless means a $99/yr
+Apple Developer ID plus notarization. Permanent complexity to put a window
 around a UI that already works. Docs cost nothing and rot slower.
 
 The rest of this doc is the research that fed that call, kept because the
@@ -61,12 +63,16 @@ TUI sees it next run.
 
 ## The stack it would use
 
-| Layer      | Crate                                                             | State (Aug 2026)                                                            |
-|------------|-------------------------------------------------------------------|-----------------------------------------------------------------------------|
-| Backend    | `egui_ratatui` 2.2.0 (Apr 2026)                                   | Implements ratatui `Backend`, already targets the 0.30 `ratatui-core` split |
-| Rasterizer | `soft_ratatui` 0.2.2 (Apr 2026)                                   | CPU glyph rendering, ~14k downloads/mo, font backends incl. cosmic-text     |
-| Input      | `terminput` 0.5.15 + `terminput-egui` 0.7.0 (Jul 2026)            | egui events → terminput → crossterm-shaped events                           |
-| Window     | `eframe` (pin to the egui version egui_ratatui wants, 0.34 today) | winit + glow/wgpu                                                           |
+| Layer      | Crate                                                  | State (Aug 2026)                                                             |
+|------------|--------------------------------------------------------|------------------------------------------------------------------------------|
+| Backend    | `egui_ratatui` 2.2.0 (Apr 2026)                        | Implements ratatui `Backend`, targets the 0.30 `ratatui-core` split; pins egui `~0.34` |
+| Rasterizer | `soft_ratatui` **0.2.0**                               | CPU glyph rendering, ~14k downloads/mo. 0.2.1 and 0.2.2 are yanked, so Cargo resolves 0.2.0; pin it explicitly |
+| Input      | `terminput` 0.5.15 + `terminput-egui` 0.7.0 (Jul 2026) | egui events → terminput → crossterm-shaped events. terminput-egui 0.7 defaults to egui 0.35; needs `default-features = false, features = ["egui_0_34"]` to match egui_ratatui |
+| Window     | `eframe` 0.34                                          | winit + glow/wgpu. Locked to egui_ratatui's egui pin, not latest              |
+
+The versions do not resolve by accident: egui 0.34 is the meeting point,
+and terminput-egui only gets there via its `egui_0_34` feature flag. Any
+future attempt must re-check this matrix first, it drifts.
 
 How each concern maps:
 
@@ -94,10 +100,13 @@ How each concern maps:
   GUI process on Linux and already silently no-ops on macOS. Native macOS
   notifications need a signed .app bundle no matter what UI stack we use, so
   that's a packaging question for later, not a code question now.
-- **Crate layout.** New cargo feature `gui` gating `eframe`, `egui_ratatui`,
-  and `terminput`, plus a third `[[bin]] focus-fox-app`. Plain
-  `cargo build` and the existing `.#static` musl build never compile any of
-  it. This is the whole trick for not disturbing the release pipeline.
+- **Crate layout.** New cargo feature `gui` gating the direct dependencies:
+  `eframe` 0.34, `egui_ratatui` 2.2, `soft_ratatui` 0.2.0 (pinned,
+  later 0.2.x are yanked), `terminput`, `terminput-egui` (with the
+  `egui_0_34` feature, default features off), and `terminput-crossterm`.
+  Plus a third `[[bin]] focus-fox-app`. Plain `cargo build` and the
+  existing `.#static` musl build never compile any of it. This is the
+  whole trick for not disturbing the release pipeline.
 
 Effort: 2 to 4 days to a working window, roughly 300 to 500 new lines.
 
@@ -113,12 +122,23 @@ binaries for the same reason and ships distro packages. So the current
 
 ### Linux plan
 
-Ship the GUI binary dynamically linked (normal glibc nix build) inside the
-existing deb/rpm/arch packages, with hand-declared runtime deps in nfpm
-(nfpm does not auto-detect them): `libxkbcommon`, wayland, X11 libs,
-`libgl1`/mesa. Add a `.desktop` file and an icon via nfpm `contents`, that's
-what makes GNOME/KDE treat it as a real app you can pin and hotkey. The
-static tarball keeps shipping only the TUI binaries.
+Ship the GUI binary dynamically linked inside the existing deb/rpm/arch
+packages, with hand-declared runtime deps in nfpm (nfpm does not
+auto-detect them): `libxkbcommon`, wayland, X11 libs, `libgl1`/mesa. Add a
+`.desktop` file and an icon via nfpm `contents`, that's what makes
+GNOME/KDE treat it as a real app you can pin and hotkey. The static tarball
+keeps shipping only the TUI binaries.
+
+One trap here: a normal Nix glibc build is not portable off the Nix store
+even with those distro packages installed. The binary keeps a
+`/nix/store/.../ld-linux` ELF interpreter and RPATH entries pointing at
+Nix-store glibc, ALSA, and GCC outputs, so it fails on a clean non-Nix
+host. The plan needs an explicit patchelf step, set the interpreter to the
+FHS loader and strip the Nix RPATHs, the Linux twin of the darwin
+`install_name_tool` relink we already do, with the same
+`disallowedReferences` style check, then test on clean target distros. The
+existing static derivation avoids this whole problem, which is exactly
+what a dynamic GUI binary gives up.
 
 AppImage is possible later (`nix bundle` + `nix-appimage`) but the output
 is rough today: no desktop-file/icon integration, and GPU apps need nixGL
@@ -139,17 +159,20 @@ unchanged. Ship it zipped in the GitHub release.
 
 The catch is Gatekeeper. Since Sequoia, an unsigned app requires the user to
 go to System Settings → Privacy & Security → "Open Anyway" once. Ad-hoc
-signing does not help. And Homebrew forces the decision: `--no-quarantine`
-is deprecated, and **on September 1, 2026 Homebrew removes every cask that
-fails Gatekeeper**. So a cask for the GUI app effectively requires a $99/yr
-Apple Developer ID plus notarization. `rcodesign` can sign and notarize from
-Linux CI, no Mac needed, so the pipeline can do it, the only question is
-paying Apple.
+signing does not help. On the Homebrew side, `--no-quarantine` is
+deprecated, and on September 1, 2026 Homebrew removes every cask **in the
+official homebrew-cask repo** that fails Gatekeeper. That deadline does not
+apply to `jordangarrison/tap`: a cask there can keep shipping an unsigned
+.app, users just eat the manual override on every install. So notarization
+(a $99/yr Apple Developer ID; `rcodesign` can sign and notarize from Linux
+CI, no Mac needed) is only required for official-cask distribution or a
+frictionless install, it is a choice, not a mandate.
 
 Plan: ship the unsigned .app zip on GitHub releases with an "Open Anyway"
 note in the README. The existing Homebrew formula keeps shipping the TUI
-binaries, which are unaffected. Add a cask only if we decide the $99/yr is
-worth it.
+binaries, which are unaffected. If we add a cask to our tap, record the
+decision that it requires the override; pay for a Developer ID only if
+that friction actually bothers people.
 
 Estimate: 1 to 2 days for the bundle + relink. Notarization is a separate
 half-day once a Developer ID exists.
@@ -203,7 +226,8 @@ half-day once a Developer ID exists.
    method, theme path. Full parity with the TUI.
 3. Linux packaging (1-2 days): .desktop, icon, nfpm deps, release.yml.
 4. macOS .app (1-2 days): nix bundle derivation, relink, zip in release.
-5. Decide on Apple Developer ID. Only needed for a Homebrew cask.
+5. Decide on Apple Developer ID. Only needed for an official homebrew-cask
+   listing or a friction-free cask in our own tap.
 
 ## Sources
 
